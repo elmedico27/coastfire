@@ -64,20 +64,20 @@ const COLOR = {
 };
 
 export default function CoastFireMatrix() {
-  const [spending, setSpending] = useState(135000);
-  const [spendingDraft, setSpendingDraft] = useState('135,000');
+  const [spending, setSpending] = useState(100000);
+  const [spendingDraft, setSpendingDraft] = useState('100,000');
 
   const [swr, setSwr] = useState(4); // anchor SWR, %
 
   const [rate, setRate] = useState(7); // real return, %
 
-  const [balance, setBalance] = useState(1250000);
-  const [balanceDraft, setBalanceDraft] = useState('1,250,000');
+  const [balance, setBalance] = useState(1000000);
+  const [balanceDraft, setBalanceDraft] = useState('1,000,000');
 
   const [currentAge, setCurrentAge] = useState(40);
 
-  const [annualContribution, setAnnualContribution] = useState(30000);
-  const [contributionDraft, setContributionDraft] = useState('30,000');
+  const [annualContribution, setAnnualContribution] = useState(24500);
+  const [contributionDraft, setContributionDraft] = useState('24,500');
 
   const targetAges = useMemo(() => Array.from({ length: 18 }, (_, i) => 45 + i), []); // 45..62
   const coastAges = useMemo(() => {
