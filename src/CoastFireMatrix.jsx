@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 
-const PLANNING_AGE = 90; // assumed age portfolio must last to
 const ANCHOR_HORIZON = 30; // the horizon your SWR input is anchored to
 
 // Approximate shape of how "safe" withdrawal rate shifts with horizon length.
@@ -63,21 +62,135 @@ const COLOR = {
   currentRowBg: '#E8D8A9',
 };
 
+// ---- Stat card accent (this is where the "pop" lives) ----
+const CARD = {
+  bg: '#2F4B3C',   // deep forest
+  text: '#F5EFDD',
+  label: '#B7C9AF',
+};
+
+// Inline styles for the range sliders (thumb + track), scoped by class name.
+const SLIDER_CSS = `
+.cfm-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: ${COLOR.border};
+  outline: none;
+  margin: 10px 0 8px;
+}
+.cfm-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: ${COLOR.heading};
+  border: 3px solid ${COLOR.panel};
+  box-shadow: 0 1px 3px rgba(59,47,31,0.45);
+  cursor: pointer;
+  margin-top: -8px;
+}
+.cfm-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: ${COLOR.heading};
+  border: 3px solid ${COLOR.panel};
+  box-shadow: 0 1px 3px rgba(59,47,31,0.45);
+  cursor: pointer;
+}
+.cfm-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: ${COLOR.border};
+}
+.cfm-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: ${COLOR.border};
+}
+.cfm-toggle {
+  position: relative;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: ${COLOR.border};
+  outline: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+.cfm-toggle:checked {
+  background: ${COLOR.label};
+}
+.cfm-toggle::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: ${COLOR.panel};
+  box-shadow: 0 1px 2px rgba(59,47,31,0.35);
+  transition: transform 0.15s ease;
+}
+.cfm-toggle:checked::before {
+  transform: translateX(18px);
+}
+`;
+
+function Slider({ label, value, onChange, min, max, step, suffix }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <label style={{ fontSize: 12, letterSpacing: '0.01em', color: COLOR.label, fontWeight: 600 }}>
+          {label}
+        </label>
+        <span style={{ fontSize: 14, fontWeight: 700, color: COLOR.heading, fontVariantNumeric: 'tabular-nums' }}>
+          {value.toFixed(1)}{suffix}
+        </span>
+      </div>
+      <input
+        className="cfm-slider"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+      />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: COLOR.body }}>
+        <span>{min}{suffix}</span>
+        <span>{max}{suffix}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function CoastFireMatrix() {
-  const [spending, setSpending] = useState(100000);
-  const [spendingDraft, setSpendingDraft] = useState('100,000');
+  const [spending, setSpending] = useState(135000);
+  const [spendingDraft, setSpendingDraft] = useState('135,000');
 
   const [swr, setSwr] = useState(4); // anchor SWR, %
 
+  const [horizonAdjust, setHorizonAdjust] = useState(true);
+  const [lifeExpectancy, setLifeExpectancy] = useState(90);
+
   const [rate, setRate] = useState(7); // real return, %
 
-  const [balance, setBalance] = useState(1000000);
-  const [balanceDraft, setBalanceDraft] = useState('1,000,000');
+  const [balance, setBalance] = useState(1250000);
+  const [balanceDraft, setBalanceDraft] = useState('1,250,000');
 
   const [currentAge, setCurrentAge] = useState(40);
 
-  const [annualContribution, setAnnualContribution] = useState(24500);
-  const [contributionDraft, setContributionDraft] = useState('24,500');
+  const [annualContribution, setAnnualContribution] = useState(30000);
+  const [contributionDraft, setContributionDraft] = useState('30,000');
 
   const targetAges = useMemo(() => Array.from({ length: 18 }, (_, i) => 45 + i), []); // 45..62
   const coastAges = useMemo(() => {
@@ -86,17 +199,24 @@ export default function CoastFireMatrix() {
     return Array.from({ length: Math.max(len, 1) }, (_, i) => start + i);
   }, [currentAge]);
 
-  // Effective FI number per target age, horizon-adjusted off the SWR anchor
+  // Effective FI number per target age. When horizon-adjustment is on, adjusted off
+  // the SWR anchor using life expectancy; when off, the SWR anchor is applied flat.
   const fiByTarget = useMemo(() => {
     const map = {};
     targetAges.forEach((targetAge) => {
-      const horizon = PLANNING_AGE - targetAge;
-      const mult = horizonMultiplier(horizon);
-      const effSwr = (swr / 100) * mult;
+      let effSwr;
+      let horizon = null;
+      if (horizonAdjust) {
+        horizon = lifeExpectancy - targetAge;
+        const mult = horizonMultiplier(horizon);
+        effSwr = (swr / 100) * mult;
+      } else {
+        effSwr = swr / 100;
+      }
       map[targetAge] = { horizon, effSwr, fi: spending / effSwr };
     });
     return map;
-  }, [targetAges, spending, swr]);
+  }, [targetAges, spending, swr, horizonAdjust, lifeExpectancy]);
 
   const grid = useMemo(() => {
     const r = rate / 100;
@@ -127,6 +247,31 @@ export default function CoastFireMatrix() {
     });
     return map;
   }, [coastAges, currentAge, rate, balance, annualContribution]);
+
+  // ---- Summary stat cards ----
+  const anchorFi = spending / (swr / 100);
+
+  // 1. Earliest target age, coasting from right now, that's already cleared.
+  const coastNowAge = useMemo(() => {
+    const row = coastAges.indexOf(currentAge);
+    if (row === -1) return null;
+    for (let ci = 0; ci < targetAges.length; ci++) {
+      const val = grid[row][ci];
+      if (val === null) continue;
+      if (projectedByCoastAge[currentAge] >= val) return targetAges[ci];
+    }
+    return null; // not cleared for any modeled target age yet
+  }, [coastAges, currentAge, targetAges, grid, projectedByCoastAge]);
+
+  // 3. Coast number anchored to a fixed, commonly-assumed retirement age (62), regardless of current age.
+  const typicalTargetAge = 62;
+  const typicalCoastNumber = useMemo(() => {
+    const years = Math.max(typicalTargetAge - currentAge, 0);
+    const fi = fiByTarget[typicalTargetAge]?.fi;
+    if (fi === undefined) return null;
+    const r = rate / 100;
+    return fi / Math.pow(1 + r, years);
+  }, [currentAge, fiByTarget, rate]);
 
   const handleSpendingBlur = () => {
     const parsed = parseFloat(spendingDraft.replace(/[^0-9.]/g, ''));
@@ -183,7 +328,11 @@ export default function CoastFireMatrix() {
     gap: 8,
   };
 
-  const anchorFi = spending / (swr / 100);
+  const statCardStyle = (bg) => ({
+    background: bg,
+    borderRadius: 10,
+    padding: '16px 18px',
+  });
 
   return (
     <div style={{
@@ -193,6 +342,7 @@ export default function CoastFireMatrix() {
       color: COLOR.body,
       padding: '32px 20px',
     }}>
+      <style>{SLIDER_CSS}</style>
       <div style={{ maxWidth: 1150, margin: '0 auto' }}>
         <div style={{ marginBottom: 26 }}>
           <div style={{ fontSize: 13, letterSpacing: '0.02em', color: COLOR.label, marginBottom: 8, fontWeight: 600 }}>
@@ -201,8 +351,52 @@ export default function CoastFireMatrix() {
           <h1 style={{ fontFamily: "'Newsreader', Georgia, serif", fontWeight: 500, fontSize: 34, margin: '0 0 8px', color: COLOR.heading }}>
             CoastFIRE Matrix
           </h1>
-          <div style={{ fontSize: 13.5, color: COLOR.body, lineHeight: 1.5, maxWidth: 640 }}>
+          <div style={{ fontSize: 13.5, color: COLOR.body, lineHeight: 1.5 }}>
             Find the balance you need, at each age you might stop contributing, to coast — untouched — to full financial independence by any retirement age.
+          </div>
+        </div>
+
+        {/* Summary stat cards */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 14,
+          marginBottom: 16,
+        }}>
+          <div style={statCardStyle(CARD.bg)}>
+            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6, textTransform: 'lowercase' }}>
+              coast now to retire by...
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums' }}>
+              {coastNowAge !== null ? coastNowAge : 'not yet'}
+            </div>
+            <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
+              stop contributing at {currentAge}, coast from there
+            </div>
+          </div>
+
+          <div style={statCardStyle(CARD.bg)}>
+            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6, textTransform: 'lowercase' }}>
+              full FIRE target
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums' }}>
+              {fmt(anchorFi)}
+            </div>
+            <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
+              retire at any age with this amount
+            </div>
+          </div>
+
+          <div style={statCardStyle(CARD.bg)}>
+            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6, textTransform: 'lowercase' }}>
+              typical retirement coast number
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums' }}>
+              {typicalCoastNumber !== null ? fmt(typicalCoastNumber) : '—'}
+            </div>
+            <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
+              to retire at {typicalTargetAge}
+            </div>
           </div>
         </div>
 
@@ -278,71 +472,61 @@ export default function CoastFireMatrix() {
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Model dials */}
-        <div style={{
-          background: COLOR.panel,
-          border: `1px solid ${COLOR.border}`,
-          borderRadius: 8,
-          padding: 18,
-          marginBottom: 16,
-        }}>
-          <div style={groupHeaderStyle}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: COLOR.label, display: 'inline-block' }} />
-            Model dials
-          </div>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
             gap: 14,
-            alignItems: 'end',
+            marginTop: 14,
           }}>
-            <div>
-              <label style={labelStyle}>SWR anchor (30-yr horizon)</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  style={{ ...inputStyle, paddingRight: 24 }}
-                  type="number" step="0.1" min="1" max="10"
-                  value={swr}
-                  onChange={(e) => setSwr(parseFloat(e.target.value) || 0)}
-                />
-                <span style={{ position: 'absolute', right: 10, top: 9, color: COLOR.label }}>%</span>
-              </div>
-            </div>
-
-            <div>
-              <label style={labelStyle}>Real rate of return</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  style={{ ...inputStyle, paddingRight: 24 }}
-                  type="number" step="0.1" min="0" max="12"
-                  value={rate}
-                  onChange={(e) => setRate(parseFloat(e.target.value) || 0)}
-                />
-                <span style={{ position: 'absolute', right: 10, top: 9, color: COLOR.label }}>%</span>
-              </div>
-            </div>
-
-            <div style={{
-              gridColumn: 'span 1',
-              background: COLOR.page,
-              border: `1px solid ${COLOR.border}`,
-              borderRadius: 6,
-              padding: '10px 14px',
-            }}>
-              <label style={{ ...labelStyle, marginBottom: 4 }}>Anchor FI number (age 60)</label>
-              <div style={{ fontSize: 20, fontWeight: 700, color: COLOR.heading, fontVariantNumeric: 'tabular-nums' }}>
-                {fmt(anchorFi)}
-              </div>
-            </div>
+            <Slider
+              label="Safe withdrawal rate*"
+              value={swr}
+              onChange={setSwr}
+              min={1} max={10} step={0.1}
+              suffix="%"
+            />
+            <Slider
+              label="Real rate of return"
+              value={rate}
+              onChange={setRate}
+              min={0} max={12} step={0.1}
+              suffix="%"
+            />
           </div>
-        </div>
 
-        <div style={{ fontSize: 11.5, color: COLOR.body, marginBottom: 16, lineHeight: 1.5 }}>
-          FI number varies by target age: effective SWR = anchor SWR × horizon multiplier, where horizon = {PLANNING_AGE} − target age.
-          Shorter horizons (later target ages) get a higher effective SWR and lower FI number; longer horizons (earlier target ages) get a lower effective SWR and higher FI number.
-          This multiplier curve is an approximation, not a precise formula.
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'flex-end',
+            gap: 24,
+            marginTop: 14,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="checkbox"
+                className="cfm-toggle"
+                id="horizon-toggle"
+                checked={horizonAdjust}
+                onChange={(e) => setHorizonAdjust(e.target.checked)}
+              />
+              <label htmlFor="horizon-toggle" style={{ ...labelStyle, marginBottom: 0, cursor: 'pointer' }}>
+                Adjust SWR for retirement horizon?
+              </label>
+            </div>
+
+            {horizonAdjust && (
+              <div style={{ minWidth: 150 }}>
+                <label style={labelStyle}>Life expectancy</label>
+                <input
+                  style={inputStyle}
+                  type="number" min="70" max="105"
+                  value={lifeExpectancy}
+                  onChange={(e) => setLifeExpectancy(parseInt(e.target.value, 10) || 0)}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, fontSize: 12, color: COLOR.body }}>
@@ -365,7 +549,7 @@ export default function CoastFireMatrix() {
                   textAlign: 'left', color: COLOR.heading, borderBottom: `1px solid ${COLOR.border}`, borderRight: `1px solid ${COLOR.border}`,
                   fontWeight: 700, fontSize: 12
                 }}>
-                  Coast ↓ / Target →
+                  Coast ↓ / Retire →
                 </th>
                 {targetAges.map((a) => (
                   <th key={a} style={{
@@ -373,9 +557,11 @@ export default function CoastFireMatrix() {
                     borderBottom: `1px solid ${COLOR.border}`, fontWeight: 700, minWidth: 70
                   }}>
                     <div>{a}</div>
-                    <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
-                      {(fiByTarget[a].effSwr * 100).toFixed(2)}%
-                    </div>
+                    {horizonAdjust && (
+                      <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
+                        {(fiByTarget[a].effSwr * 100).toFixed(2)}%
+                      </div>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -389,7 +575,7 @@ export default function CoastFireMatrix() {
                   }}>
                     <div>{coastAge}{coastAge === currentAge ? ' •' : ''}</div>
                     <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
-                      proj. {fmt(projectedByCoastAge[coastAge])}
+                      contrib. {fmt(projectedByCoastAge[coastAge])}
                     </div>
                   </td>
                   {targetAges.map((targetAge, ci) => {
@@ -424,10 +610,30 @@ export default function CoastFireMatrix() {
         </div>
 
         <div style={{ marginTop: 18, fontSize: 12, color: COLOR.body, lineHeight: 1.6 }}>
-          Each row's "proj." figure is your current balance plus annual contributions, both compounded from now until that coast age — this is what's compared against the required balance in each cell.
-          Row marked • is your current age; its projected balance equals your current balance since there's no runway to grow before coasting today.
-          Small % under each target age column is the horizon-adjusted effective SWR used for that column. Blank cells mean target precedes coast (not possible).
-          Mortgage payoff (~2049) sits outside this grid for most current-age/target combinations — revisit if your target age pushes past 63.
+          <div style={{ fontWeight: 700, color: COLOR.heading, marginBottom: 8 }}>
+            Other notes &amp; explanations
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <li style={{ marginBottom: 6 }}>
+              {horizonAdjust ? (
+                <>*Safe withdrawal rate — the slider sets your baseline rate for a 30-year retirement, but a rate that's safe over 30 years isn't automatically safe over a longer stretch, or overly conservative over a shorter one. With adjustment on, the model corrects for this against your life expectancy ({lifeExpectancy}): retiring earlier means your money needs to stretch further, which lowers the effective rate (and raises the balance you need); retiring later shortens that stretch and raises the effective rate. The small % under each retirement-age column header is the adjusted rate actually used for that age.</>
+              ) : (
+                <>*Safe withdrawal rate — horizon adjustment is off, so your safe withdrawal rate is applied flat across every retirement age, with no correction for how long that specific retirement needs the money to last.</>
+              )}
+            </li>
+            <li style={{ marginBottom: 6 }}>
+              The stat cards above are quick reference points — the matrix below is the full picture across every coast age / retire age combination.
+            </li>
+            <li style={{ marginBottom: 6 }}>
+              Each row's "contrib." figure is your current balance plus annual contributions, both compounded from now until that coast age — this is what's compared against the required balance in each cell.
+            </li>
+            <li style={{ marginBottom: 6 }}>
+              Row marked • is your current age; its contrib. figure equals your current balance since there's no runway to grow before coasting today.
+            </li>
+            <li style={{ marginBottom: 6 }}>
+              Blank cells mean the retirement age precedes the coast age (not possible).
+            </li>
+          </ul>
         </div>
       </div>
     </div>
