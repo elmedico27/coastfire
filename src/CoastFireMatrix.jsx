@@ -10,6 +10,13 @@ const HORIZON_POINTS = [
   { horizon: 35, mult: 0.92 },
   { horizon: 40, mult: 0.87 },
   { horizon: 45, mult: 0.82 },
+  { horizon: 50, mult: 0.79 },
+  { horizon: 55, mult: 0.77 },
+  { horizon: 60, mult: 0.75 },
+  { horizon: 65, mult: 0.74 },
+  { horizon: 70, mult: 0.73 },
+  { horizon: 80, mult: 0.715 },
+  { horizon: 90, mult: 0.705 },
 ];
 
 function horizonMultiplier(horizon) {
@@ -27,8 +34,9 @@ function horizonMultiplier(horizon) {
 }
 
 function fmt(n) {
-  if (Math.abs(n) >= 1000000) return `$${(n / 1000000).toFixed(2)}M`;
-  return `$${Math.round(n / 1000)}K`;
+  const kRounded = Math.round(n / 1000);
+  if (Math.abs(kRounded) >= 1000) return `$${(n / 1000000).toFixed(2)}M`;
+  return `$${kRounded}K`;
 }
 
 function fmtInput(n) {
@@ -42,6 +50,10 @@ function fvContributions(annual, years, r) {
   return annual * ((Math.pow(1 + r, years) - 1) / r);
 }
 
+// ---- Fonts: mono for anything numeric/tabular, sans for prose/UI chrome ----
+const FONT_MONO = "'IBM Plex Mono', 'Courier New', monospace";
+const FONT_SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
 // ---- Palette (warm / earthy, cream-leaning) ----
 const COLOR = {
   page: '#F7F0DE',        // cream page background
@@ -53,10 +65,14 @@ const COLOR = {
   inputBg: '#FFFFFF',
   inputBorder: '#DDCA9E',
   inputText: '#3B2F1F',
-  clearedBg: '#96B37A',   // olive green
-  clearedText: '#243019',
-  notClearedBg: '#E0AC74',// warm clay
-  notClearedText: '#4A2A12',
+  // Cleared / not-cleared: soft tint + border + text, not solid fill —
+  // keeps the signal readable without color as the only cue, and stays calm at 18x18 scale.
+  clearedBg: '#EAF1E1',
+  clearedBorder: '#6B8F52',
+  clearedText: '#3D5C2C',
+  notClearedBg: '#FBEBD9',
+  notClearedBorder: '#C97B3D',
+  notClearedText: '#8A4A1E',
   blankCell: '#FFFBF2',
   headerBg: '#FFFBF2',
   currentRowBg: '#E8D8A9',
@@ -64,10 +80,12 @@ const COLOR = {
 
 // ---- Stat card accent (this is where the "pop" lives) ----
 const CARD = {
-  bg: '#2F4B3C',   // deep forest
-  text: '#F5EFDD',
-  label: '#B7C9AF',
+  bg: '#BD6A3E',   // terracotta
+  text: '#FBF3E7',
+  label: '#EAD2BC',
 };
+
+const shadowSm = '0 1px 3px rgba(59,47,31,0.08), 0 1px 2px rgba(59,47,31,0.06)';
 
 // Inline styles for the range sliders (thumb + track), scoped by class name.
 const SLIDER_CSS = `
@@ -145,18 +163,19 @@ const SLIDER_CSS = `
 }
 `;
 
-function Slider({ label, value, onChange, min, max, step, suffix }) {
+function Slider({ id, label, value, onChange, min, max, step, suffix, decimals = 1 }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <label style={{ fontSize: 12, letterSpacing: '0.01em', color: COLOR.label, fontWeight: 600 }}>
+        <label htmlFor={id} style={{ fontSize: 12, letterSpacing: '0.01em', color: COLOR.label, fontWeight: 600, fontFamily: FONT_SANS }}>
           {label}
         </label>
-        <span style={{ fontSize: 14, fontWeight: 700, color: COLOR.heading, fontVariantNumeric: 'tabular-nums' }}>
-          {value.toFixed(1)}{suffix}
+        <span style={{ fontSize: 14, fontWeight: 700, color: COLOR.heading, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
+          {value.toFixed(decimals)}{suffix}
         </span>
       </div>
       <input
+        id={id}
         className="cfm-slider"
         type="range"
         min={min}
@@ -174,30 +193,40 @@ function Slider({ label, value, onChange, min, max, step, suffix }) {
 }
 
 export default function CoastFireMatrix() {
-  const [spending, setSpending] = useState(135000);
-  const [spendingDraft, setSpendingDraft] = useState('135,000');
+  const [spending, setSpending] = useState(60000);
+  const [spendingDraft, setSpendingDraft] = useState('60,000');
 
   const [swr, setSwr] = useState(4); // anchor SWR, %
 
   const [horizonAdjust, setHorizonAdjust] = useState(true);
   const [lifeExpectancy, setLifeExpectancy] = useState(90);
+  const [lifeExpectancyDraft, setLifeExpectancyDraft] = useState('90');
 
   const [rate, setRate] = useState(7); // real return, %
 
-  const [balance, setBalance] = useState(1250000);
-  const [balanceDraft, setBalanceDraft] = useState('1,250,000');
+  const [balance, setBalance] = useState(1000000);
+  const [balanceDraft, setBalanceDraft] = useState('1,000,000');
 
   const [currentAge, setCurrentAge] = useState(40);
+  const [currentAgeDraft, setCurrentAgeDraft] = useState('40');
 
-  const [annualContribution, setAnnualContribution] = useState(30000);
-  const [contributionDraft, setContributionDraft] = useState('30,000');
+  const [annualContribution, setAnnualContribution] = useState(24500);
+  const [contributionDraft, setContributionDraft] = useState('24,500');
 
-  const targetAges = useMemo(() => Array.from({ length: 18 }, (_, i) => 45 + i), []); // 45..62
-  const coastAges = useMemo(() => {
-    const start = Math.min(40, currentAge);
-    const len = 62 - start + 1;
-    return Array.from({ length: Math.max(len, 1) }, (_, i) => start + i);
+  // Row/column hover highlight + tap-to-reveal cell detail (works for mouse hover and touch tap alike)
+  const [hoverCoast, setHoverCoast] = useState(null);
+  const [hoverTarget, setHoverTarget] = useState(null);
+  const [activeCell, setActiveCell] = useState(null); // { coastAge, targetAge, val }
+
+  // Both coast ages (rows) and retirement/target ages (columns) run from currentAge
+  // through a hard stop at 62 — no earlier floor, no later ceiling.
+  const ages = useMemo(() => {
+    const start = Math.min(currentAge, 62);
+    const len = Math.max(62 - start + 1, 1);
+    return Array.from({ length: len }, (_, i) => start + i);
   }, [currentAge]);
+  const targetAges = ages;
+  const coastAges = ages;
 
   // Effective FI number per target age. When horizon-adjustment is on, adjusted off
   // the SWR anchor using life expectancy; when off, the SWR anchor is applied flat.
@@ -275,23 +304,39 @@ export default function CoastFireMatrix() {
 
   const handleSpendingBlur = () => {
     const parsed = parseFloat(spendingDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? spending : parsed;
+    const clean = isNaN(parsed) ? spending : Math.max(0, parsed);
     setSpending(clean);
     setSpendingDraft(fmtInput(clean));
   };
 
   const handleBalanceBlur = () => {
     const parsed = parseFloat(balanceDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? balance : parsed;
+    const clean = isNaN(parsed) ? balance : Math.max(0, parsed);
     setBalance(clean);
     setBalanceDraft(fmtInput(clean));
   };
 
   const handleContributionBlur = () => {
     const parsed = parseFloat(contributionDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? annualContribution : parsed;
+    const clean = isNaN(parsed) ? annualContribution : Math.max(0, parsed);
     setAnnualContribution(clean);
     setContributionDraft(fmtInput(clean));
+  };
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  const handleAgeBlur = () => {
+    const parsed = parseInt(currentAgeDraft, 10);
+    const clean = isNaN(parsed) ? currentAge : clamp(parsed, 18, 62);
+    setCurrentAge(clean);
+    setCurrentAgeDraft(String(clean));
+  };
+
+  const handleLifeExpectancyBlur = () => {
+    const parsed = parseInt(lifeExpectancyDraft, 10);
+    const clean = isNaN(parsed) ? lifeExpectancy : clamp(parsed, 70, 105);
+    setLifeExpectancy(clean);
+    setLifeExpectancyDraft(String(clean));
   };
 
   const inputStyle = {
@@ -299,12 +344,24 @@ export default function CoastFireMatrix() {
     border: `1px solid ${COLOR.inputBorder}`,
     borderRadius: 4,
     color: COLOR.inputText,
-    fontFamily: 'inherit',
+    fontFamily: FONT_MONO,
     fontSize: 14,
     padding: '8px 10px',
     width: '100%',
     boxSizing: 'border-box',
     outline: 'none',
+  };
+
+  const dollarPrefixStyle = {
+    position: 'absolute',
+    left: 10,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    color: COLOR.label,
+    fontFamily: FONT_MONO,
+    fontSize: 14,
+    lineHeight: 1,
+    pointerEvents: 'none',
   };
 
   const labelStyle = {
@@ -332,11 +389,12 @@ export default function CoastFireMatrix() {
     background: bg,
     borderRadius: 10,
     padding: '16px 18px',
+    boxShadow: shadowSm,
   });
 
   return (
     <div style={{
-      fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
+      fontFamily: FONT_SANS,
       background: COLOR.page,
       minHeight: '100vh',
       color: COLOR.body,
@@ -359,7 +417,7 @@ export default function CoastFireMatrix() {
         {/* Summary stat cards */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 300px))',
           gap: 14,
           marginBottom: 16,
         }}>
@@ -367,7 +425,7 @@ export default function CoastFireMatrix() {
             <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6, textTransform: 'lowercase' }}>
               coast now to retire by...
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
               {coastNowAge !== null ? coastNowAge : 'not yet'}
             </div>
             <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
@@ -379,7 +437,7 @@ export default function CoastFireMatrix() {
             <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6, textTransform: 'lowercase' }}>
               full FIRE target
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
               {fmt(anchorFi)}
             </div>
             <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
@@ -391,7 +449,7 @@ export default function CoastFireMatrix() {
             <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6, textTransform: 'lowercase' }}>
               typical retirement coast number
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
               {typicalCoastNumber !== null ? fmt(typicalCoastNumber) : '—'}
             </div>
             <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
@@ -407,6 +465,7 @@ export default function CoastFireMatrix() {
           borderRadius: 8,
           padding: 18,
           marginBottom: 14,
+          boxShadow: shadowSm,
         }}>
           <div style={groupHeaderStyle}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: COLOR.label, display: 'inline-block' }} />
@@ -418,20 +477,24 @@ export default function CoastFireMatrix() {
             gap: 14,
           }}>
             <div>
-              <label style={labelStyle}>Current age</label>
+              <label htmlFor="input-age" style={labelStyle}>Current age</label>
               <input
+                id="input-age"
                 style={inputStyle}
                 type="number" min="18" max="62"
-                value={currentAge}
-                onChange={(e) => setCurrentAge(parseInt(e.target.value, 10) || 0)}
+                value={currentAgeDraft}
+                onChange={(e) => setCurrentAgeDraft(e.target.value)}
+                onBlur={handleAgeBlur}
+                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
               />
             </div>
 
             <div>
-              <label style={labelStyle}>Current investment balance</label>
+              <label htmlFor="input-balance" style={labelStyle}>Current investment balance</label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 10, top: 9, color: COLOR.label }}>$</span>
+                <span style={dollarPrefixStyle}>$</span>
                 <input
+                  id="input-balance"
                   style={{ ...inputStyle, paddingLeft: 22 }}
                   value={balanceDraft}
                   onChange={(e) => setBalanceDraft(e.target.value)}
@@ -443,10 +506,11 @@ export default function CoastFireMatrix() {
             </div>
 
             <div>
-              <label style={labelStyle}>Annual contributions until coast</label>
+              <label htmlFor="input-contribution" style={labelStyle}>Annual contributions until coast</label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 10, top: 9, color: COLOR.label }}>$</span>
+                <span style={dollarPrefixStyle}>$</span>
                 <input
+                  id="input-contribution"
                   style={{ ...inputStyle, paddingLeft: 22 }}
                   value={contributionDraft}
                   onChange={(e) => setContributionDraft(e.target.value)}
@@ -458,10 +522,11 @@ export default function CoastFireMatrix() {
             </div>
 
             <div>
-              <label style={labelStyle}>Annual retirement spend</label>
+              <label htmlFor="input-spending" style={labelStyle}>Annual retirement spend</label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 10, top: 9, color: COLOR.label }}>$</span>
+                <span style={dollarPrefixStyle}>$</span>
                 <input
+                  id="input-spending"
                   style={{ ...inputStyle, paddingLeft: 22 }}
                   value={spendingDraft}
                   onChange={(e) => setSpendingDraft(e.target.value)}
@@ -480,6 +545,7 @@ export default function CoastFireMatrix() {
             marginTop: 14,
           }}>
             <Slider
+              id="slider-swr"
               label="Safe withdrawal rate*"
               value={swr}
               onChange={setSwr}
@@ -487,6 +553,7 @@ export default function CoastFireMatrix() {
               suffix="%"
             />
             <Slider
+              id="slider-rate"
               label="Real rate of return"
               value={rate}
               onChange={setRate}
@@ -517,12 +584,15 @@ export default function CoastFireMatrix() {
 
             {horizonAdjust && (
               <div style={{ minWidth: 150 }}>
-                <label style={labelStyle}>Life expectancy</label>
+                <label htmlFor="input-life-expectancy" style={labelStyle}>Life expectancy</label>
                 <input
+                  id="input-life-expectancy"
                   style={inputStyle}
                   type="number" min="70" max="105"
-                  value={lifeExpectancy}
-                  onChange={(e) => setLifeExpectancy(parseInt(e.target.value, 10) || 0)}
+                  value={lifeExpectancyDraft}
+                  onChange={(e) => setLifeExpectancyDraft(e.target.value)}
+                  onBlur={handleLifeExpectancyBlur}
+                  onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                 />
               </div>
             )}
@@ -531,51 +601,91 @@ export default function CoastFireMatrix() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, fontSize: 12, color: COLOR.body }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 10, height: 10, background: COLOR.clearedBg, display: 'inline-block', borderRadius: 2 }} />
+            <span style={{ width: 10, height: 10, background: COLOR.clearedBg, border: `1.5px solid ${COLOR.clearedBorder}`, display: 'inline-block', borderRadius: 2 }} />
             projected balance clears this target
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 10, height: 10, background: COLOR.notClearedBg, display: 'inline-block', borderRadius: 2 }} />
+            <span style={{ width: 10, height: 10, background: COLOR.notClearedBg, border: `1.5px solid ${COLOR.notClearedBorder}`, display: 'inline-block', borderRadius: 2 }} />
             projected balance falls short
           </span>
         </div>
 
-        <div style={{ overflowX: 'auto', border: `1px solid ${COLOR.border}`, borderRadius: 8 }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
+        {/* Tap-to-reveal detail strip — doubles as the mobile-friendly replacement for hover tooltips */}
+        <div style={{
+          fontSize: 12, color: COLOR.heading, marginBottom: 10, padding: '8px 12px',
+          background: COLOR.panel, border: `1px solid ${COLOR.border}`, borderRadius: 6,
+          fontFamily: FONT_MONO, minHeight: 16,
+        }}>
+          {activeCell ? (
+            <>
+              Coast at <b>{activeCell.coastAge}</b>, retire at <b>{activeCell.targetAge}</b>: needs <b>{fmt(activeCell.val)}</b> at coast age
+              {' — '}projected <b>{fmt(projectedByCoastAge[activeCell.coastAge])}</b>
+              {projectedByCoastAge[activeCell.coastAge] >= activeCell.val
+                ? <span style={{ color: COLOR.clearedBorder }}> (clears by {fmt(projectedByCoastAge[activeCell.coastAge] - activeCell.val)})</span>
+                : <span style={{ color: COLOR.notClearedBorder }}> (short by {fmt(activeCell.val - projectedByCoastAge[activeCell.coastAge])})</span>}
+            </>
+          ) : (
+            <span style={{ color: COLOR.body, fontFamily: FONT_SANS }}>Tap or click any cell for the coast/retire detail behind it.</span>
+          )}
+        </div>
+
+        <div
+          style={{ overflowX: 'auto', border: `1px solid ${COLOR.border}`, borderRadius: 8, maxHeight: '70vh', overflowY: 'auto' }}
+          onMouseLeave={() => { setHoverCoast(null); setHoverTarget(null); }}
+        >
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5, fontFamily: FONT_MONO }}>
             <thead>
               <tr>
                 <th style={{
-                  position: 'sticky', left: 0, background: COLOR.headerBg, padding: '10px 12px',
+                  position: 'sticky', top: 0, left: 0, zIndex: 3, background: COLOR.headerBg, padding: '10px 12px',
                   textAlign: 'left', color: COLOR.heading, borderBottom: `1px solid ${COLOR.border}`, borderRight: `1px solid ${COLOR.border}`,
-                  fontWeight: 700, fontSize: 12
+                  fontWeight: 700, fontSize: 12, fontFamily: FONT_SANS
                 }}>
                   Coast ↓ / Retire →
                 </th>
-                {targetAges.map((a) => (
-                  <th key={a} style={{
-                    padding: '8px 8px', textAlign: 'center', color: COLOR.heading, background: COLOR.headerBg,
-                    borderBottom: `1px solid ${COLOR.border}`, fontWeight: 700, minWidth: 70
-                  }}>
-                    <div>{a}</div>
-                    {horizonAdjust && (
-                      <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
-                        {(fiByTarget[a].effSwr * 100).toFixed(2)}%
-                      </div>
-                    )}
-                  </th>
-                ))}
+                {targetAges.map((a) => {
+                  const colHighlighted = hoverTarget === a;
+                  return (
+                    <th
+                      key={a}
+                      onMouseEnter={() => setHoverTarget(a)}
+                      style={{
+                        position: 'sticky', top: 0, zIndex: 2,
+                        padding: '8px 8px', textAlign: 'center', color: COLOR.heading,
+                        background: colHighlighted ? COLOR.currentRowBg : COLOR.headerBg,
+                        borderBottom: `1px solid ${COLOR.border}`, fontWeight: 700, minWidth: 70,
+                        transition: 'background 0.1s ease',
+                      }}
+                    >
+                      <div>{a}</div>
+                      {horizonAdjust && (
+                        <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
+                          {(fiByTarget[a].effSwr * 100).toFixed(2)}%
+                        </div>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {coastAges.map((coastAge, ri) => (
                 <tr key={coastAge}>
-                  <td style={{
-                    position: 'sticky', left: 0, background: coastAge === currentAge ? COLOR.currentRowBg : COLOR.panel, padding: '8px 12px',
-                    color: COLOR.heading, fontWeight: 700, borderRight: `1px solid ${COLOR.border}`, borderBottom: '1px solid #D6C193'
-                  }}>
+                  <td
+                    onMouseEnter={() => setHoverCoast(coastAge)}
+                    style={{
+                      position: 'sticky', left: 0, zIndex: 1,
+                      background: hoverCoast === coastAge
+                        ? COLOR.currentRowBg
+                        : (coastAge === currentAge ? COLOR.currentRowBg : COLOR.panel),
+                      padding: '8px 12px',
+                      color: COLOR.heading, fontWeight: 700, borderRight: `1px solid ${COLOR.border}`, borderBottom: '1px solid #D6C193',
+                      transition: 'background 0.1s ease',
+                    }}
+                  >
                     <div>{coastAge}{coastAge === currentAge ? ' •' : ''}</div>
                     <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
-                      contrib. {fmt(projectedByCoastAge[coastAge])}
+                      proj. {fmt(projectedByCoastAge[coastAge])}
                     </div>
                   </td>
                   {targetAges.map((targetAge, ci) => {
@@ -585,18 +695,26 @@ export default function CoastFireMatrix() {
                     }
                     const cleared = projectedByCoastAge[coastAge] >= val;
                     const isDiagonal = coastAge === targetAge;
+                    const highlighted = hoverCoast === coastAge || hoverTarget === targetAge;
                     return (
                       <td
                         key={targetAge}
                         title={`Coast at ${coastAge}, fully retire at ${targetAge}`}
+                        onMouseEnter={() => { setHoverCoast(coastAge); setHoverTarget(targetAge); }}
+                        onClick={() => setActiveCell({ coastAge, targetAge, val })}
                         style={{
                           padding: '8px 6px',
                           textAlign: 'center',
-                          borderBottom: '1px solid #D6C193',
+                          border: `1px solid ${cleared ? COLOR.clearedBorder : COLOR.notClearedBorder}`,
                           background: cleared ? COLOR.clearedBg : COLOR.notClearedBg,
                           color: cleared ? COLOR.clearedText : COLOR.notClearedText,
                           fontWeight: isDiagonal ? 700 : 400,
                           fontVariantNumeric: 'tabular-nums',
+                          cursor: 'pointer',
+                          boxShadow: highlighted ? 'inset 0 0 0 1000px rgba(59,47,31,0.07)' : 'none',
+                          outline: activeCell && activeCell.coastAge === coastAge && activeCell.targetAge === targetAge
+                            ? `2px solid ${COLOR.heading}` : 'none',
+                          outlineOffset: -2,
                         }}
                       >
                         {fmt(val)}
@@ -625,10 +743,10 @@ export default function CoastFireMatrix() {
               The stat cards above are quick reference points — the matrix below is the full picture across every coast age / retire age combination.
             </li>
             <li style={{ marginBottom: 6 }}>
-              Each row's "contrib." figure is your current balance plus annual contributions, both compounded from now until that coast age — this is what's compared against the required balance in each cell.
+              Each row's "proj." figure is your current balance plus annual contributions, both compounded at your real rate of return from now until that coast age — this is what's compared against the required balance in each cell.
             </li>
             <li style={{ marginBottom: 6 }}>
-              Row marked • is your current age; its contrib. figure equals your current balance since there's no runway to grow before coasting today.
+              Row marked • is your current age; its proj. figure equals your current balance since there's no runway to grow before coasting today.
             </li>
             <li style={{ marginBottom: 6 }}>
               Blank cells mean the retirement age precedes the coast age (not possible).
