@@ -50,6 +50,15 @@ function fvContributions(annual, years, r) {
   return annual * ((Math.pow(1 + r, years) - 1) / r);
 }
 
+// Present value (at the start of `years`) of a flat annual amount needed only for `years`,
+// ordinary annuity. Used for the mortgage payment: it's not a perpetual SWR draw, just a
+// finite bridge from a given target age until the mortgage is paid off.
+function pvAnnuity(annual, years, r) {
+  if (years <= 0) return 0;
+  if (r === 0) return annual * years;
+  return annual * ((1 - Math.pow(1 + r, -years)) / r);
+}
+
 // ---- Fonts: mono for anything numeric/tabular, sans for prose/UI chrome ----
 const FONT_MONO = "'IBM Plex Mono', 'Courier New', monospace";
 const FONT_SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
@@ -80,9 +89,9 @@ const COLOR = {
 
 // ---- Stat card accent (this is where the "pop" lives) ----
 const CARD = {
-  bg: '#BD6A3E',   // terracotta
-  text: '#FBF3E7',
-  label: '#EAD2BC',
+  bg: '#5C7A48',   // moss green
+  text: '#F7F0DE',
+  label: '#C9D6B0',
 };
 
 const shadowSm = '0 1px 3px rgba(59,47,31,0.08), 0 1px 2px rgba(59,47,31,0.06)';
@@ -213,6 +222,12 @@ export default function CoastFireMatrix() {
   const [annualContribution, setAnnualContribution] = useState(24500);
   const [contributionDraft, setContributionDraft] = useState('24,500');
 
+  const [mortgagePayoff, setMortgagePayoff] = useState(false);
+  const [monthlyMortgage, setMonthlyMortgage] = useState(2000);
+  const [monthlyMortgageDraft, setMonthlyMortgageDraft] = useState('2,000');
+  const [payoffAge, setPayoffAge] = useState(55);
+  const [payoffAgeDraft, setPayoffAgeDraft] = useState('55');
+
   // Row/column hover highlight + tap-to-reveal cell detail (works for mouse hover and touch tap alike)
   const [hoverCoast, setHoverCoast] = useState(null);
   const [hoverTarget, setHoverTarget] = useState(null);
@@ -232,6 +247,7 @@ export default function CoastFireMatrix() {
   // the SWR anchor using life expectancy; when off, the SWR anchor is applied flat.
   const fiByTarget = useMemo(() => {
     const map = {};
+    const r = rate / 100;
     targetAges.forEach((targetAge) => {
       let effSwr;
       let horizon = null;
@@ -242,10 +258,13 @@ export default function CoastFireMatrix() {
       } else {
         effSwr = swr / 100;
       }
-      map[targetAge] = { horizon, effSwr, fi: spending / effSwr };
+      const floorFi = spending / effSwr;
+      const bridgeYears = mortgagePayoff ? Math.max(payoffAge - targetAge, 0) : 0;
+      const bridgeFi = bridgeYears > 0 ? pvAnnuity(monthlyMortgage * 12, bridgeYears, r) : 0;
+      map[targetAge] = { horizon, effSwr, fi: floorFi + bridgeFi };
     });
     return map;
-  }, [targetAges, spending, swr, horizonAdjust, lifeExpectancy]);
+  }, [targetAges, spending, swr, horizonAdjust, lifeExpectancy, mortgagePayoff, monthlyMortgage, payoffAge, rate]);
 
   const grid = useMemo(() => {
     const r = rate / 100;
@@ -278,7 +297,7 @@ export default function CoastFireMatrix() {
   }, [coastAges, currentAge, rate, balance, annualContribution]);
 
   // ---- Summary stat cards ----
-  const anchorFi = spending / (swr / 100);
+  const anchorFi = (spending + (mortgagePayoff ? monthlyMortgage * 12 : 0)) / (swr / 100);
 
   // 1. Earliest target age, coasting from right now, that's already cleared.
   const coastNowAge = useMemo(() => {
@@ -337,6 +356,20 @@ export default function CoastFireMatrix() {
     const clean = isNaN(parsed) ? lifeExpectancy : clamp(parsed, 70, 105);
     setLifeExpectancy(clean);
     setLifeExpectancyDraft(String(clean));
+  };
+
+  const handleMonthlyMortgageBlur = () => {
+    const parsed = parseFloat(monthlyMortgageDraft.replace(/[^0-9.]/g, ''));
+    const clean = isNaN(parsed) ? monthlyMortgage : Math.max(0, parsed);
+    setMonthlyMortgage(clean);
+    setMonthlyMortgageDraft(fmtInput(clean));
+  };
+
+  const handlePayoffAgeBlur = () => {
+    const parsed = parseInt(payoffAgeDraft, 10);
+    const clean = isNaN(parsed) ? payoffAge : clamp(parsed, 18, 100);
+    setPayoffAge(clean);
+    setPayoffAgeDraft(String(clean));
   };
 
   const inputStyle = {
@@ -403,9 +436,6 @@ export default function CoastFireMatrix() {
       <style>{SLIDER_CSS}</style>
       <div style={{ maxWidth: 1150, margin: '0 auto' }}>
         <div style={{ marginBottom: 26 }}>
-          <div style={{ fontSize: 13, letterSpacing: '0.02em', color: COLOR.label, marginBottom: 8, fontWeight: 600 }}>
-            Coast FIRE Planner
-          </div>
           <h1 style={{ fontFamily: "'Newsreader', Georgia, serif", fontWeight: 500, fontSize: 34, margin: '0 0 8px', color: COLOR.heading }}>
             CoastFIRE Matrix
           </h1>
@@ -522,7 +552,9 @@ export default function CoastFireMatrix() {
             </div>
 
             <div>
-              <label htmlFor="input-spending" style={labelStyle}>Annual retirement spend</label>
+              <label htmlFor="input-spending" style={labelStyle}>
+                {mortgagePayoff ? 'Annual retirement spend (excl. mortgage)' : 'Annual retirement spend'}
+              </label>
               <div style={{ position: 'relative' }}>
                 <span style={dollarPrefixStyle}>$</span>
                 <input
@@ -595,6 +627,60 @@ export default function CoastFireMatrix() {
                   onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                 />
               </div>
+            )}
+          </div>
+
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'flex-end',
+            gap: 24,
+            marginTop: 14,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="checkbox"
+                className="cfm-toggle"
+                id="mortgage-toggle"
+                checked={mortgagePayoff}
+                onChange={(e) => setMortgagePayoff(e.target.checked)}
+              />
+              <label htmlFor="mortgage-toggle" style={{ ...labelStyle, marginBottom: 0, cursor: 'pointer' }}>
+                Account for mortgage payoff?
+              </label>
+            </div>
+
+            {mortgagePayoff && (
+              <>
+                <div style={{ minWidth: 150 }}>
+                  <label htmlFor="input-monthly-mortgage" style={labelStyle}>Monthly mortgage payment</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={dollarPrefixStyle}>$</span>
+                    <input
+                      id="input-monthly-mortgage"
+                      style={{ ...inputStyle, paddingLeft: 22 }}
+                      value={monthlyMortgageDraft}
+                      onChange={(e) => setMonthlyMortgageDraft(e.target.value)}
+                      onBlur={handleMonthlyMortgageBlur}
+                      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                      inputMode="numeric"
+                    />
+                  </div>
+                </div>
+
+                <div style={{ minWidth: 150 }}>
+                  <label htmlFor="input-payoff-age" style={labelStyle}>Age at payoff</label>
+                  <input
+                    id="input-payoff-age"
+                    style={inputStyle}
+                    type="number" min="18" max="100"
+                    value={payoffAgeDraft}
+                    onChange={(e) => setPayoffAgeDraft(e.target.value)}
+                    onBlur={handlePayoffAgeBlur}
+                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                  />
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -739,6 +825,11 @@ export default function CoastFireMatrix() {
                 <>*Safe withdrawal rate — horizon adjustment is off, so your safe withdrawal rate is applied flat across every retirement age, with no correction for how long that specific retirement needs the money to last.</>
               )}
             </li>
+            {mortgagePayoff && (
+              <li style={{ marginBottom: 6 }}>
+                Mortgage payoff — the FI number for each retirement age adds a temporary bridge on top of your (excl. mortgage) spend: your monthly payment, annualized, funded only from that retirement age until age {payoffAge}. This isn't drawn at your safe withdrawal rate — it's a fixed-length obligation, discounted at your real rate of return, so it needs less than the sustainability math would ask a perpetual draw to hold. Retirement ages at or past {payoffAge} carry no bridge at all, since the mortgage is already gone.
+              </li>
+            )}
             <li style={{ marginBottom: 6 }}>
               The stat cards above are quick reference points — the matrix below is the full picture across every coast age / retire age combination.
             </li>
