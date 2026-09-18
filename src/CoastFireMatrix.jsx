@@ -834,13 +834,7 @@ export default function CoastFireMatrix() {
               The stat cards above are quick reference points — the matrix below is the full picture across every coast age / retire age combination.
             </li>
             <li style={{ marginBottom: 6 }}>
-              Each row's "proj." figure is your current balance plus annual contributions, both compounded at your real rate of return from now until that coast age — this is what's compared against the required balance in each cell.
-            </li>
-            <li style={{ marginBottom: 6 }}>
-              Row marked • is your current age; its proj. figure equals your current balance since there's no runway to grow before coasting today.
-            </li>
-            <li style={{ marginBottom: 6 }}>
-              Blank cells mean the retirement age precedes the coast age (not possible).
+              Each row's "proj." figure is your current balance plus annual contributions, both compounded at your real rate of return from now until that coast age — this is what's compared against the required balance in each cell. Row marked • is your current age; its proj. figure equals your current balance since there's no runway to grow before coasting today.
             </li>
           </ul>
         </div>
