@@ -838,6 +838,17 @@ export default function CoastFireMatrix() {
             </li>
           </ul>
         </div>
+
+        <div style={{ textAlign: 'center', marginTop: 24 }}>
+          <a
+            href="https://github.com/elmedico27/coastfire"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 12, color: COLOR.label, textDecoration: 'underline' }}
+          >
+            View Source on GitHub
+          </a>
+        </div>
       </div>
     </div>
   );
