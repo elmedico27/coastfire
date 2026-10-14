@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 
 const ANCHOR_HORIZON = 30; // the horizon your SWR input is anchored to
 
@@ -170,15 +170,130 @@ const SLIDER_CSS = `
 .cfm-toggle:checked::before {
   transform: translateX(18px);
 }
+.cfm-info {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: -5px 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.cfm-info:focus-visible {
+  outline: 2px solid ${COLOR.heading};
+  outline-offset: -2px;
+}
+.cfm-cell:focus {
+  outline: none;
+}
+.cfm-cell:focus-visible {
+  outline: 3px solid ${COLOR.heading} !important;
+  outline-offset: -3px;
+}
 `;
 
-function Slider({ id, label, value, onChange, min, max, step, suffix, decimals = 1 }) {
+// "?" button + popover. Opens on click / tap / Enter / Space (so touch and keyboard work),
+// and also on mouse hover. Esc or a click elsewhere closes it.
+function InfoTip({ id, label, children }) {
+  const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [shift, setShift] = useState(0);
+  const rootRef = useRef(null);
+  const panelRef = useRef(null);
+  const visible = pinned || hovered;
+
+  const close = () => { setPinned(false); setHovered(false); };
+
+  // The label can sit near the right edge on narrow screens: nudge the panel back inside the viewport.
+  useLayoutEffect(() => {
+    if (!visible || !panelRef.current) return;
+    const panel = panelRef.current;
+    const anchor = panel.offsetParent;
+    if (!anchor) return;
+    const anchorLeft = anchor.getBoundingClientRect().left;
+    const vw = document.documentElement.clientWidth;
+    const desired = Math.min(Math.max(anchorLeft, 12), Math.max(vw - panel.offsetWidth - 12, 12));
+    setShift(desired - anchorLeft);
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const onPointerDown = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) close(); };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [visible]);
+
+  return (
+    <span
+      ref={rootRef}
+      style={{ display: 'inline-flex' }}
+      // Hover is mouse-only: touch fires hover events on tap, which would fight with the click toggle.
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHovered(true); }}
+      onPointerLeave={(e) => { if (e.pointerType === 'mouse') setHovered(false); }}
+    >
+      <button
+        type="button"
+        className="cfm-info"
+        aria-label={`About ${label.toLowerCase()}`}
+        aria-expanded={visible}
+        aria-controls={visible ? id : undefined}
+        onClick={() => { if (pinned) close(); else setPinned(true); }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 15, height: 15, borderRadius: '50%', boxSizing: 'border-box',
+            border: `1.5px solid ${COLOR.label}`,
+            background: visible ? COLOR.label : 'transparent',
+            color: visible ? COLOR.panel : COLOR.label,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 10, fontWeight: 700, lineHeight: 1, fontFamily: FONT_SANS,
+          }}
+        >?</span>
+      </button>
+      {visible && (
+        <span
+          id={id}
+          ref={panelRef}
+          style={{
+            position: 'absolute', top: '100%', left: 0, zIndex: 10,
+            transform: `translateX(${shift}px)`,
+            width: 'min(300px, calc(100vw - 24px))',
+            paddingTop: 6, // part of the panel, so the pointer can travel from the "?" onto it
+          }}
+        >
+          <span style={{
+            display: 'block', background: COLOR.panel, border: `1px solid ${COLOR.border}`, borderRadius: 6,
+            padding: '10px 12px', boxShadow: shadowSm,
+            fontSize: 12.5, fontWeight: 400, lineHeight: 1.5, color: COLOR.heading, fontFamily: FONT_SANS,
+          }}>
+            {children}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function Slider({ id, label, info, value, onChange, min, max, step, suffix, decimals = 1 }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <label htmlFor={id} style={{ fontSize: 12, letterSpacing: '0.01em', color: COLOR.label, fontWeight: 600, fontFamily: FONT_SANS }}>
-          {label}
-        </label>
+        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <label htmlFor={id} style={{ fontSize: 12, letterSpacing: '0.01em', color: COLOR.label, fontWeight: 600, fontFamily: FONT_SANS }}>
+            {label}
+          </label>
+          {info && <InfoTip id={`${id}-info`} label={label}>{info}</InfoTip>}
+        </span>
         <span style={{ fontSize: 14, fontWeight: 700, color: COLOR.heading, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
           {value.toFixed(decimals)}{suffix}
         </span>
@@ -232,6 +347,9 @@ export default function CoastFireMatrix() {
   const [hoverCoast, setHoverCoast] = useState(null);
   const [hoverTarget, setHoverTarget] = useState(null);
   const [activeCell, setActiveCell] = useState(null); // { coastAge, targetAge, val }
+  // Keyboard navigation: one tab stop into the matrix (roving tabindex), arrow keys move within it.
+  const [focusCell, setFocusCell] = useState(null); // { r, c } indexes into grid
+  const gridRef = useRef(null);
 
   // Both coast ages (rows) and retirement/target ages (columns) run from currentAge
   // through a hard stop at 62 — no earlier floor, no later ceiling.
@@ -372,6 +490,43 @@ export default function CoastFireMatrix() {
     setPayoffAgeDraft(String(clean));
   };
 
+  // The one cell that sits in the tab order: last-focused cell, else the first cell of the current-age row.
+  const entryCell = (focusCell && grid[focusCell.r] && grid[focusCell.r][focusCell.c] != null)
+    ? focusCell
+    : { r: 0, c: 0 };
+
+  const handleCellKeyDown = (e, ri, ci, coastAge, targetAge, val) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setActiveCell({ coastAge, targetAge, val });
+      return;
+    }
+    const lastR = coastAges.length - 1;
+    const lastC = targetAges.length - 1;
+    // Next filled cell in a direction; blank cells (coast age after retire age) are skipped.
+    const step = (dr, dc) => {
+      let r = ri + dr, c = ci + dc;
+      while (r >= 0 && r <= lastR && c >= 0 && c <= lastC) {
+        if (grid[r][c] !== null) return { r, c };
+        r += dr; c += dc;
+      }
+      return null;
+    };
+    let next = null;
+    if (e.key === 'ArrowRight') next = step(0, 1);
+    else if (e.key === 'ArrowLeft') next = step(0, -1);
+    else if (e.key === 'ArrowDown') next = step(1, 0);
+    else if (e.key === 'ArrowUp') next = step(-1, 0);
+    else if (e.key === 'Home') next = { r: ri, c: grid[ri].findIndex((v) => v !== null) };
+    else if (e.key === 'End') next = { r: ri, c: lastC };
+    else return;
+    e.preventDefault();
+    if (!next) return;
+    setFocusCell(next);
+    const el = gridRef.current && gridRef.current.querySelector(`[data-r="${next.r}"][data-c="${next.c}"]`);
+    if (el) el.focus();
+  };
+
   const inputStyle = {
     background: COLOR.inputBg,
     border: `1px solid ${COLOR.inputBorder}`,
@@ -444,6 +599,24 @@ export default function CoastFireMatrix() {
           </div>
         </div>
 
+        <div style={{
+          marginBottom: 16,
+          padding: '14px 16px',
+          border: `1px solid ${COLOR.border}`,
+          borderRadius: 8,
+          background: COLOR.panel,
+          color: COLOR.heading,
+          fontSize: 14,
+          lineHeight: 1.5,
+          boxShadow: shadowSm,
+        }}>
+          {coastNowAge !== null ? (
+            <>If you stopped contributing today, your current balance alone would grow to cover retirement at age <strong>{coastNowAge}</strong> or later.</>
+          ) : (
+            <>If you stopped contributing today, your balance wouldn't cover retirement at any age through <strong>{targetAges[targetAges.length - 1]}</strong>. The matrix below shows what you'd need at each coast age.</>
+          )}
+        </div>
+
         {/* Summary stat cards */}
         <div style={{
           display: 'grid',
@@ -452,19 +625,21 @@ export default function CoastFireMatrix() {
           marginBottom: 16,
         }}>
           <div style={statCardStyle(CARD.bg)}>
-            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6, textTransform: 'lowercase' }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6 }}>
               coast now to retire by...
             </div>
             <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
               {coastNowAge !== null ? coastNowAge : 'not yet'}
             </div>
             <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
-              stop contributing at {currentAge}, coast from there
+              {coastNowAge !== null
+                ? `stop contributing at ${currentAge}, coast from there`
+                : `no retirement age through ${targetAges[targetAges.length - 1]} clears yet`}
             </div>
           </div>
 
           <div style={statCardStyle(CARD.bg)}>
-            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6, textTransform: 'lowercase' }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6 }}>
               full FIRE target
             </div>
             <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
@@ -476,7 +651,7 @@ export default function CoastFireMatrix() {
           </div>
 
           <div style={statCardStyle(CARD.bg)}>
-            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6, textTransform: 'lowercase' }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6 }}>
               typical retirement coast number
             </div>
             <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
@@ -578,7 +753,10 @@ export default function CoastFireMatrix() {
           }}>
             <Slider
               id="slider-swr"
-              label="Safe withdrawal rate*"
+              label="Safe withdrawal rate"
+              info={horizonAdjust
+                ? `Your baseline rate for a ${ANCHOR_HORIZON}-year retirement. Longer retirements use a lower rate and shorter ones a higher rate; the % under each retirement-age column is the rate actually used.`
+                : 'Applied as-is to every retirement age, however long retirement lasts.'}
               value={swr}
               onChange={setSwr}
               min={1} max={10} step={0.1}
@@ -587,6 +765,7 @@ export default function CoastFireMatrix() {
             <Slider
               id="slider-rate"
               label="Real rate of return"
+              info="Annual investment return after inflation, so every figure here is in today's dollars. U.S. stocks have historically returned roughly 6–7% a year after inflation; future returns may differ."
               value={rate}
               onChange={setRate}
               min={0} max={12} step={0.1}
@@ -610,7 +789,7 @@ export default function CoastFireMatrix() {
                 onChange={(e) => setHorizonAdjust(e.target.checked)}
               />
               <label htmlFor="horizon-toggle" style={{ ...labelStyle, marginBottom: 0, cursor: 'pointer' }}>
-                Adjust SWR for retirement horizon?
+                Adjust safe withdrawal rate for retirement length?
               </label>
             </div>
 
@@ -685,19 +864,19 @@ export default function CoastFireMatrix() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, fontSize: 12, color: COLOR.body }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, fontSize: 12, color: COLOR.body, flexWrap: 'wrap' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 10, height: 10, background: COLOR.clearedBg, border: `1.5px solid ${COLOR.clearedBorder}`, display: 'inline-block', borderRadius: 2 }} />
-            projected balance clears this target
+            your projected balance clears the target
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 10, height: 10, background: COLOR.notClearedBg, border: `1.5px solid ${COLOR.notClearedBorder}`, display: 'inline-block', borderRadius: 2 }} />
-            projected balance falls short
+            your projected balance falls short
           </span>
         </div>
 
         {/* Tap-to-reveal detail strip — doubles as the mobile-friendly replacement for hover tooltips */}
-        <div style={{
+        <div role="status" aria-live="polite" style={{
           fontSize: 12, color: COLOR.heading, marginBottom: 10, padding: '8px 12px',
           background: COLOR.panel, border: `1px solid ${COLOR.border}`, borderRadius: 6,
           fontFamily: FONT_MONO, minHeight: 16,
@@ -711,15 +890,27 @@ export default function CoastFireMatrix() {
                 : <span style={{ color: COLOR.notClearedBorder }}> (short by {fmt(activeCell.val - projectedByCoastAge[activeCell.coastAge])})</span>}
             </>
           ) : (
-            <span style={{ color: COLOR.body, fontFamily: FONT_SANS }}>Tap or click any cell for the coast/retire detail behind it.</span>
+            <span style={{ color: COLOR.body, fontFamily: FONT_SANS }}>Tap or click a cell — or arrow to it and press Enter — for the coast/retire detail behind it.</span>
           )}
         </div>
 
         <div
-          style={{ overflowX: 'auto', border: `1px solid ${COLOR.border}`, borderRadius: 8, maxHeight: '70vh', overflowY: 'auto' }}
+          style={{
+            overflowX: 'auto', border: `1px solid ${COLOR.border}`, borderRadius: 8, maxHeight: '70vh', overflowY: 'auto',
+            // keep keyboard-focused cells from scrolling underneath the sticky header row / coast-age column
+            scrollPaddingTop: 56, scrollPaddingLeft: 100,
+          }}
           onMouseLeave={() => { setHoverCoast(null); setHoverTarget(null); }}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) { setHoverCoast(null); setHoverTarget(null); }
+          }}
         >
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5, fontFamily: FONT_MONO }}>
+          <table
+            ref={gridRef}
+            role="grid"
+            aria-label="Balance needed at each coast age, by retirement age"
+            style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5, fontFamily: FONT_MONO }}
+          >
             <thead>
               <tr>
                 <th style={{
@@ -758,6 +949,7 @@ export default function CoastFireMatrix() {
               {coastAges.map((coastAge, ri) => (
                 <tr key={coastAge}>
                   <td
+                    role="rowheader"
                     onMouseEnter={() => setHoverCoast(coastAge)}
                     style={{
                       position: 'sticky', left: 0, zIndex: 1,
@@ -785,8 +977,17 @@ export default function CoastFireMatrix() {
                     return (
                       <td
                         key={targetAge}
+                        className="cfm-cell"
+                        role="gridcell"
+                        data-r={ri}
+                        data-c={ci}
+                        tabIndex={entryCell.r === ri && entryCell.c === ci ? 0 : -1}
+                        aria-selected={!!(activeCell && activeCell.coastAge === coastAge && activeCell.targetAge === targetAge)}
+                        aria-label={`Coast at ${coastAge}, retire at ${targetAge}: needs ${fmt(val)} at coast age; your projected balance ${cleared ? 'clears it' : 'falls short'}`}
                         title={`Coast at ${coastAge}, fully retire at ${targetAge}`}
                         onMouseEnter={() => { setHoverCoast(coastAge); setHoverTarget(targetAge); }}
+                        onFocus={() => { setFocusCell({ r: ri, c: ci }); setHoverCoast(coastAge); setHoverTarget(targetAge); }}
+                        onKeyDown={(e) => handleCellKeyDown(e, ri, ci, coastAge, targetAge, val)}
                         onClick={() => setActiveCell({ coastAge, targetAge, val })}
                         style={{
                           padding: '8px 6px',
@@ -820,9 +1021,9 @@ export default function CoastFireMatrix() {
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             <li style={{ marginBottom: 6 }}>
               {horizonAdjust ? (
-                <>*Safe withdrawal rate — the slider sets your baseline rate for a 30-year retirement, but a rate that's safe over 30 years isn't automatically safe over a longer stretch, or overly conservative over a shorter one. With adjustment on, the model corrects for this against your life expectancy ({lifeExpectancy}): retiring earlier means your money needs to stretch further, which lowers the effective rate (and raises the balance you need); retiring later shortens that stretch and raises the effective rate. The small % under each retirement-age column header is the adjusted rate actually used for that age.</>
+                <>Safe withdrawal rate — the slider sets your baseline rate for a 30-year retirement, but a rate that's safe over 30 years isn't automatically safe over a longer stretch, or overly conservative over a shorter one. With adjustment on, the model corrects for this against your life expectancy ({lifeExpectancy}): retiring earlier means your money needs to stretch further, which lowers the effective rate (and raises the balance you need); retiring later shortens that stretch and raises the effective rate. The small % under each retirement-age column header is the adjusted rate actually used for that age.</>
               ) : (
-                <>*Safe withdrawal rate — horizon adjustment is off, so your safe withdrawal rate is applied flat across every retirement age, with no correction for how long that specific retirement needs the money to last.</>
+                <>Safe withdrawal rate — horizon adjustment is off, so your safe withdrawal rate is applied flat across every retirement age, with no correction for how long that specific retirement needs the money to last.</>
               )}
             </li>
             {mortgagePayoff && (
