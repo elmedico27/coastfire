@@ -74,27 +74,47 @@ const COLOR = {
   inputBg: '#FFFFFF',
   inputBorder: '#DDCA9E',
   inputText: '#3B2F1F',
-  // Cleared / not-cleared: soft tint + border + text, not solid fill —
-  // keeps the signal readable without color as the only cue, and stays calm at 18x18 scale.
-  clearedBg: '#EAF1E1',
-  clearedBorder: '#6B8F52',
-  clearedText: '#3D5C2C',
-  notClearedBg: '#FBEBD9',
-  notClearedBorder: '#C97B3D',
-  notClearedText: '#8A4A1E',
   blankCell: '#FFFBF2',
   headerBg: '#FFFBF2',
   currentRowBg: '#E8D8A9',
 };
 
 // ---- Stat card accent (this is where the "pop" lives) ----
+// Hero card (the one place the page "pops"). Moss green deep enough that all text on it is >= 4.5:1.
 const CARD = {
-  bg: '#5C7A48',   // moss green
-  text: '#F7F0DE',
-  label: '#C9D6B0',
+  bg: '#4A6741',
+  text: '#F7F0DE',  // 5.6:1
+  sub: '#E6EDD3',   // 5.3:1
+  rule: 'rgba(247,240,222,0.28)',
 };
 
 const shadowSm = '0 1px 3px rgba(59,47,31,0.08), 0 1px 2px rgba(59,47,31,0.06)';
+
+// ---- Coverage heatmap ----
+// coverage = projected balance at the coast age / balance required there.
+// Two hues so the 100% line stays unmistakable: green at or above it, orange below.
+// Within each hue, a deeper tint means further from 100%. The two bands that meet at 100% also differ
+// in lightness (not just hue), and shortfall cells get dashed borders, so the line survives without color.
+// Every text/background pair is >= 4.5:1 contrast, including under the hover tint.
+// `range` doubles as the legend label for now (plain-English names are parked for later).
+const COVERAGE_BANDS = [
+  { id: 'c150', min: 1.5,  range: '150% or more', bg: '#BFD6A5', border: '#4D7338', text: '#213B16', short: false },
+  { id: 'c125', min: 1.25, range: '125–150%',     bg: '#DAE8CA', border: '#5E8546', text: '#2F4D21', short: false },
+  { id: 'c100', min: 1.0,  range: '100–125%',     bg: '#F0F5E8', border: '#6B8F52', text: '#3D5C2C', short: false },
+  { id: 'c90',  min: 0.9,  range: '90–100%',      bg: '#F7DDBE', border: '#C97B3D', text: '#7F4219', short: true },
+  { id: 'c0',   min: 0,    range: 'under 90%',    bg: '#EDBB87', border: '#B35F1B', text: '#5E2B0A', short: true },
+];
+
+// Compares projected >= required * min (no division), so "100%+" is exactly the old projected >= required test.
+function coverageBand(projected, required) {
+  for (const b of COVERAGE_BANDS) if (projected >= required * b.min) return b;
+  return COVERAGE_BANDS[COVERAGE_BANDS.length - 1];
+}
+
+// Rounded down, so a cell never reads "100%" while it is still short.
+function coveragePct(projected, required) {
+  return required > 0 ? Math.floor((projected / required) * 100) : null;
+}
 
 // Inline styles for the range sliders (thumb + track), scoped by class name.
 const SLIDER_CSS = `
@@ -186,6 +206,41 @@ const SLIDER_CSS = `
 .cfm-info:focus-visible {
   outline: 2px solid ${COLOR.heading};
   outline-offset: -2px;
+}
+/* Page layout. Phones: one column in DOM order (title, hero, inputs, matrix column, notes).
+   From 960px: title / hero / inputs / notes stack on the left, and the matrix column spans all of those
+   rows and is pinned from the very top, so the page never has a "scroll, stick, release" phase. */
+.cfm-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.cfm-layout > * {
+  min-width: 0;
+}
+.cfm-scroller {
+  max-height: 70vh;
+}
+@media (min-width: 960px) {
+  .cfm-layout {
+    grid-template-columns: 340px minmax(0, 1fr);
+    column-gap: 24px;
+    align-items: start;
+  }
+  .cfm-head   { grid-column: 1; grid-row: 1; }
+  .cfm-hero   { grid-column: 1; grid-row: 2; }
+  .cfm-inputs { grid-column: 1; grid-row: 3; }
+  .cfm-notes  { grid-column: 1; grid-row: 4; }
+  .cfm-main {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    position: sticky;
+    top: 32px; /* equals the page's top padding, so it is already pinned at scroll position 0 */
+  }
+  /* inspector + legend + matrix fit inside one screen */
+  .cfm-scroller {
+    max-height: calc(100vh - 250px);
+    min-height: 260px;
+  }
 }
 .cfm-cell:focus {
   outline: none;
@@ -316,6 +371,61 @@ function Slider({ id, label, info, value, onChange, min, max, step, suffix, deci
   );
 }
 
+// Persistent scenario inspector. Shows the cell being previewed (mouse hover or keyboard focus),
+// else the pinned cell, else the "coast now" scenario. Not a live region: the pinned cell is announced
+// separately, and focused cells already speak via their own labels.
+const srOnly = {
+  position: 'absolute', width: 1, height: 1, margin: -1, padding: 0,
+  overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+};
+
+function Inspector({ cell, source }) {
+  if (!cell) return null;
+  const heading = source === 'selected' ? 'Selected scenario' : source === 'preview' ? 'Previewing' : 'Your coast-now scenario';
+  const diff = cell.projected - cell.val;
+  const ahead = diff >= 0;
+  const stat = (field, label, value, sub, swatchBand) => (
+    <div>
+      <div style={{ fontSize: 11, color: COLOR.body, fontFamily: FONT_SANS, marginBottom: 2 }}>{label}</div>
+      <div data-field={field} style={{ fontSize: 20, fontWeight: 700, color: COLOR.heading, fontFamily: FONT_MONO, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>{value}</div>
+      {sub && (
+        <div style={{ fontSize: 11, color: COLOR.body, fontFamily: FONT_SANS, marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+          {swatchBand && (
+            <span aria-hidden="true" style={{
+              width: 11, height: 11, boxSizing: 'border-box', borderRadius: 2, display: 'inline-block',
+              background: swatchBand.bg, border: `1.5px ${swatchBand.short ? 'dashed' : 'solid'} ${swatchBand.border}`,
+            }} />
+          )}
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <section
+      aria-label="Scenario details"
+      data-source={source}
+      style={{
+        background: COLOR.panel, border: `1px solid ${COLOR.border}`, borderRadius: 8,
+        padding: '12px 16px', marginBottom: 10, boxShadow: shadowSm,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 12, marginBottom: 10 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: COLOR.label, fontFamily: FONT_SANS }}>{heading}</span>
+        <span data-field="scenario" style={{ fontSize: 13, fontWeight: 700, color: COLOR.heading, fontFamily: FONT_MONO }}>
+          Coast at {cell.coastAge}, retire at {cell.targetAge}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 14 }}>
+        {stat('required', 'Required balance', fmt(cell.val), `at age ${cell.coastAge}`)}
+        {stat('projected', 'Projected balance', fmt(cell.projected), `at age ${cell.coastAge}`)}
+        {stat('diff', ahead ? 'Surplus' : 'Shortfall', `${ahead ? '+' : '−'}${fmt(Math.abs(diff))}`)}
+        {stat('coverage', 'Coverage', cell.pct !== null ? `${cell.pct}%` : '—', cell.pct !== null ? cell.band.range : 'nothing required', cell.band)}
+      </div>
+    </section>
+  );
+}
+
 export default function CoastFireMatrix() {
   const [spending, setSpending] = useState(60000);
   const [spendingDraft, setSpendingDraft] = useState('60,000');
@@ -343,12 +453,19 @@ export default function CoastFireMatrix() {
   const [payoffAge, setPayoffAge] = useState(55);
   const [payoffAgeDraft, setPayoffAgeDraft] = useState('55');
 
-  // Row/column hover highlight + tap-to-reveal cell detail (works for mouse hover and touch tap alike)
-  const [hoverCoast, setHoverCoast] = useState(null);
-  const [hoverTarget, setHoverTarget] = useState(null);
-  const [activeCell, setActiveCell] = useState(null); // { coastAge, targetAge, val }
+  // One inspected scenario drives the inspector panel and the row/column highlight:
+  //   mouse hover  >  keyboard focus  >  pinned (click / Enter)  >  the "coast now" scenario.
+  // Pinned and hovered cells are stored by age (not value) so the inspector never shows stale numbers
+  // after an input changes.
+  const [hovered, setHovered] = useState(null);       // { coastAge, targetAge } — mouse over a cell
+  const [pinned, setPinned] = useState(null);         // { coastAge, targetAge } — click / Enter / Space
+  const [headerHover, setHeaderHover] = useState(null); // { coastAge } or { targetAge } — mouse over a header
+  const [announcement, setAnnouncement] = useState(''); // screen-reader message, only on pin / unpin
   // Keyboard navigation: one tab stop into the matrix (roving tabindex), arrow keys move within it.
-  const [focusCell, setFocusCell] = useState(null); // { r, c } indexes into grid
+  const [focusCell, setFocusCell] = useState(null);   // { r, c } indexes into grid
+  const [focusInGrid, setFocusInGrid] = useState(false);
+  // Focus stays on a cell after a mouse click; only treat focus as "inspect this" for keyboard users.
+  const [kbNav, setKbNav] = useState(false);
   const gridRef = useRef(null);
 
   // Both coast ages (rows) and retirement/target ages (columns) run from currentAge
@@ -414,10 +531,10 @@ export default function CoastFireMatrix() {
     return map;
   }, [coastAges, currentAge, rate, balance, annualContribution]);
 
-  // ---- Summary stat cards ----
+  // ---- Headline numbers ----
   const anchorFi = (spending + (mortgagePayoff ? monthlyMortgage * 12 : 0)) / (swr / 100);
 
-  // 1. Earliest target age, coasting from right now, that's already cleared.
+  // Earliest retirement age that's already covered if you stopped contributing today.
   const coastNowAge = useMemo(() => {
     const row = coastAges.indexOf(currentAge);
     if (row === -1) return null;
@@ -428,16 +545,6 @@ export default function CoastFireMatrix() {
     }
     return null; // not cleared for any modeled target age yet
   }, [coastAges, currentAge, targetAges, grid, projectedByCoastAge]);
-
-  // 3. Coast number anchored to a fixed, commonly-assumed retirement age (62), regardless of current age.
-  const typicalTargetAge = 62;
-  const typicalCoastNumber = useMemo(() => {
-    const years = Math.max(typicalTargetAge - currentAge, 0);
-    const fi = fiByTarget[typicalTargetAge]?.fi;
-    if (fi === undefined) return null;
-    const r = rate / 100;
-    return fi / Math.pow(1 + r, years);
-  }, [currentAge, fiByTarget, rate]);
 
   const handleSpendingBlur = () => {
     const parsed = parseFloat(spendingDraft.replace(/[^0-9.]/g, ''));
@@ -490,15 +597,55 @@ export default function CoastFireMatrix() {
     setPayoffAgeDraft(String(clean));
   };
 
+  // Everything the inspector shows about a cell, recomputed from current inputs. Null for blank / off-grid cells.
+  const cellInfo = (coastAge, targetAge) => {
+    const r = coastAges.indexOf(coastAge);
+    const c = targetAges.indexOf(targetAge);
+    if (r === -1 || c === -1) return null;
+    const val = grid[r][c];
+    if (val === null) return null;
+    const projected = projectedByCoastAge[coastAge];
+    return { coastAge, targetAge, r, c, val, projected, band: coverageBand(projected, val), pct: coveragePct(projected, val) };
+  };
+
+  const describeCell = (cell) => {
+    const diff = cell.projected - cell.val;
+    return `Coast at ${cell.coastAge}, retire at ${cell.targetAge}: needs ${fmt(cell.val)} at coast age; projected balance ${fmt(cell.projected)}, `
+      + `${diff >= 0 ? `a surplus of ${fmt(diff)}` : `a shortfall of ${fmt(-diff)}`}`
+      + `${cell.pct !== null ? `, covering ${cell.pct}%` : ''}.`;
+  };
+
+  const unpin = () => {
+    if (!pinned) return;
+    setPinned(null);
+    setAnnouncement('Selection cleared.');
+  };
+
+  // Click / Enter on the pinned cell unpins it; on any other cell it pins that one instead.
+  const togglePin = (coastAge, targetAge) => {
+    if (pinned && pinned.coastAge === coastAge && pinned.targetAge === targetAge) {
+      unpin();
+      return;
+    }
+    setPinned({ coastAge, targetAge });
+    const cell = cellInfo(coastAge, targetAge);
+    setAnnouncement(cell ? `Selected. ${describeCell(cell)}` : '');
+  };
+
   // The one cell that sits in the tab order: last-focused cell, else the first cell of the current-age row.
   const entryCell = (focusCell && grid[focusCell.r] && grid[focusCell.r][focusCell.c] != null)
     ? focusCell
     : { r: 0, c: 0 };
 
   const handleCellKeyDown = (e, ri, ci, coastAge, targetAge, val) => {
+    setKbNav(true);
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      setActiveCell({ coastAge, targetAge, val });
+      togglePin(coastAge, targetAge);
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (pinned) { e.preventDefault(); unpin(); }
       return;
     }
     const lastR = coastAges.length - 1;
@@ -526,6 +673,21 @@ export default function CoastFireMatrix() {
     const el = gridRef.current && gridRef.current.querySelector(`[data-r="${next.r}"][data-c="${next.c}"]`);
     if (el) el.focus();
   };
+
+  const hoveredCell = hovered ? cellInfo(hovered.coastAge, hovered.targetAge) : null;
+  const focusedCell = (kbNav && focusInGrid && focusCell) ? cellInfo(coastAges[focusCell.r], targetAges[focusCell.c]) : null;
+  const pinnedCell = pinned ? cellInfo(pinned.coastAge, pinned.targetAge) : null;
+  // Nothing hovered / focused / pinned: show how close "coast now" gets (or the latest age if it doesn't clear yet).
+  const defaultCell = cellInfo(coastAges[0], coastNowAge !== null ? coastNowAge : targetAges[targetAges.length - 1]);
+  const inspected = hoveredCell || focusedCell || pinnedCell || defaultCell;
+  const inspectedSource = !inspected ? 'none'
+    : (pinnedCell && inspected.coastAge === pinnedCell.coastAge && inspected.targetAge === pinnedCell.targetAge) ? 'selected'
+    : inspected === defaultCell ? 'default'
+    : 'preview';
+  // Row/column highlight follows the inspected cell (not the resting "coast now" default), or a hovered header.
+  const showCross = inspected && inspectedSource !== 'default';
+  const crossCoast = headerHover ? (headerHover.coastAge ?? null) : (showCross ? inspected.coastAge : null);
+  const crossTarget = headerHover ? (headerHover.targetAge ?? null) : (showCross ? inspected.targetAge : null);
 
   const inputStyle = {
     background: COLOR.inputBg,
@@ -573,13 +735,6 @@ export default function CoastFireMatrix() {
     gap: 8,
   };
 
-  const statCardStyle = (bg) => ({
-    background: bg,
-    borderRadius: 10,
-    padding: '16px 18px',
-    boxShadow: shadowSm,
-  });
-
   return (
     <div style={{
       fontFamily: FONT_SANS,
@@ -589,8 +744,9 @@ export default function CoastFireMatrix() {
       padding: '32px 20px',
     }}>
       <style>{SLIDER_CSS}</style>
-      <div style={{ maxWidth: 1150, margin: '0 auto' }}>
-        <div style={{ marginBottom: 26 }}>
+      <div style={{ maxWidth: 1320, margin: '0 auto' }}>
+        <div className="cfm-layout">
+        <div className="cfm-head" style={{ marginBottom: 26 }}>
           <h1 style={{ fontFamily: "'Newsreader', Georgia, serif", fontWeight: 500, fontSize: 34, margin: '0 0 8px', color: COLOR.heading }}>
             CoastFIRE Matrix
           </h1>
@@ -599,72 +755,52 @@ export default function CoastFireMatrix() {
           </div>
         </div>
 
-        <div style={{
-          marginBottom: 16,
-          padding: '14px 16px',
-          border: `1px solid ${COLOR.border}`,
-          borderRadius: 8,
-          background: COLOR.panel,
-          color: COLOR.heading,
-          fontSize: 14,
-          lineHeight: 1.5,
-          boxShadow: shadowSm,
-        }}>
-          {coastNowAge !== null ? (
-            <>If you stopped contributing today, your current balance alone would grow to cover retirement at age <strong>{coastNowAge}</strong> or later.</>
-          ) : (
-            <>If you stopped contributing today, your balance wouldn't cover retirement at any age through <strong>{targetAges[targetAges.length - 1]}</strong>. The matrix below shows what you'd need at each coast age.</>
-          )}
-        </div>
-
-        {/* Summary stat cards */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 300px))',
-          gap: 14,
-          marginBottom: 16,
-        }}>
-          <div style={statCardStyle(CARD.bg)}>
-            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6 }}>
-              coast now to retire by...
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
-              {coastNowAge !== null ? coastNowAge : 'not yet'}
-            </div>
-            <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
-              {coastNowAge !== null
-                ? `stop contributing at ${currentAge}, coast from there`
-                : `no retirement age through ${targetAges[targetAges.length - 1]} clears yet`}
-            </div>
+        {/* Hero: the opening statement. The big number is hidden from screen readers; the sentence carries it. */}
+        <section
+          aria-label="Coast now answer"
+          className="cfm-hero"
+          data-hero
+          style={{
+            background: CARD.bg, color: CARD.text, borderRadius: 12,
+            padding: '22px 22px 18px', marginBottom: 14, boxShadow: shadowSm,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 600, color: CARD.text, fontFamily: FONT_SANS }}>
+            Coast now, retire by
           </div>
-
-          <div style={statCardStyle(CARD.bg)}>
-            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6 }}>
-              full FIRE target
+          <div
+            aria-hidden="true"
+            data-field="hero-age"
+            style={{
+              fontFamily: FONT_MONO, fontSize: 88, fontWeight: 700, lineHeight: 1, letterSpacing: '-0.03em',
+              fontVariantNumeric: 'tabular-nums', color: CARD.text, margin: '8px 0 12px',
+            }}
+          >
+            {coastNowAge !== null ? coastNowAge : '—'}
+          </div>
+          <p data-field="hero-sentence" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: CARD.sub }}>
+            {coastNowAge !== null ? (
+              <>If you stopped contributing today, your current balance alone would grow to cover retirement at age <strong>{coastNowAge}</strong> or later.</>
+            ) : (
+              <>If you stopped contributing today, your balance wouldn't cover retirement at any age through <strong>{targetAges[targetAges.length - 1]}</strong>. The matrix shows what you'd need at each coast age.</>
+            )}
+          </p>
+          <div style={{
+            marginTop: 16, paddingTop: 12, borderTop: `1px solid ${CARD.rule}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', columnGap: 12, rowGap: 2, flexWrap: 'wrap',
+          }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: CARD.text }}>Full FIRE target</div>
+              <div style={{ fontSize: 11.5, color: CARD.sub, marginTop: 2 }}>retire at any age with this amount</div>
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
+            <div data-field="fire-target" style={{ fontSize: 22, fontWeight: 700, color: CARD.text, fontFamily: FONT_MONO, fontVariantNumeric: 'tabular-nums' }}>
               {fmt(anchorFi)}
             </div>
-            <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
-              retire at any age with this amount
-            </div>
           </div>
-
-          <div style={statCardStyle(CARD.bg)}>
-            <div style={{ fontSize: 11, letterSpacing: '0.05em', color: CARD.label, marginBottom: 6 }}>
-              typical retirement coast number
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: CARD.text, fontVariantNumeric: 'tabular-nums', fontFamily: FONT_MONO }}>
-              {typicalCoastNumber !== null ? fmt(typicalCoastNumber) : '—'}
-            </div>
-            <div style={{ fontSize: 10.5, color: CARD.label, marginTop: 4 }}>
-              to retire at {typicalTargetAge}
-            </div>
-          </div>
-        </div>
+        </section>
 
         {/* Your numbers */}
-        <div style={{
+        <div className="cfm-inputs" style={{
           background: COLOR.panel,
           border: `1px solid ${COLOR.border}`,
           borderRadius: 8,
@@ -864,45 +1000,46 @@ export default function CoastFireMatrix() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, fontSize: 12, color: COLOR.body, flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 10, height: 10, background: COLOR.clearedBg, border: `1.5px solid ${COLOR.clearedBorder}`, display: 'inline-block', borderRadius: 2 }} />
-            your projected balance clears the target
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 10, height: 10, background: COLOR.notClearedBg, border: `1.5px solid ${COLOR.notClearedBorder}`, display: 'inline-block', borderRadius: 2 }} />
-            your projected balance falls short
-          </span>
-        </div>
+        <div className="cfm-main">
+        <Inspector cell={inspected} source={inspectedSource} />
+        {/* Announces only when a cell is pinned / unpinned; hover and arrow-key moves are not announced
+            (a focused cell already reads its own label). */}
+        <div role="status" aria-live="polite" style={srOnly}>{announcement}</div>
 
-        {/* Tap-to-reveal detail strip — doubles as the mobile-friendly replacement for hover tooltips */}
-        <div role="status" aria-live="polite" style={{
-          fontSize: 12, color: COLOR.heading, marginBottom: 10, padding: '8px 12px',
-          background: COLOR.panel, border: `1px solid ${COLOR.border}`, borderRadius: 6,
-          fontFamily: FONT_MONO, minHeight: 16,
-        }}>
-          {activeCell ? (
-            <>
-              Coast at <b>{activeCell.coastAge}</b>, retire at <b>{activeCell.targetAge}</b>: needs <b>{fmt(activeCell.val)}</b> at coast age
-              {' — '}projected <b>{fmt(projectedByCoastAge[activeCell.coastAge])}</b>
-              {projectedByCoastAge[activeCell.coastAge] >= activeCell.val
-                ? <span style={{ color: COLOR.clearedBorder }}> (clears by {fmt(projectedByCoastAge[activeCell.coastAge] - activeCell.val)})</span>
-                : <span style={{ color: COLOR.notClearedBorder }}> (short by {fmt(activeCell.val - projectedByCoastAge[activeCell.coastAge])})</span>}
-            </>
-          ) : (
-            <span style={{ color: COLOR.body, fontFamily: FONT_SANS }}>Tap or click a cell — or arrow to it and press Enter — for the coast/retire detail behind it.</span>
+        <div style={{ display: 'flex', alignItems: 'center', columnGap: 14, rowGap: 6, marginBottom: 12, fontSize: 12, color: COLOR.body, flexWrap: 'wrap' }}>
+          <span>Your projected balance covers</span>
+          {COVERAGE_BANDS.map((b) => (
+            <span key={b.id} data-legend={b.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span aria-hidden="true" style={{
+                width: 12, height: 12, background: b.bg, borderRadius: 2, boxSizing: 'border-box',
+                border: `1.5px ${b.short ? 'dashed' : 'solid'} ${b.border}`, display: 'inline-block',
+              }} />
+              {b.range}
+            </span>
+          ))}
+          <span>of the required balance</span>
+          {coastNowAge !== null && (
+            <span data-legend-now style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span aria-hidden="true" style={{
+                width: 8, height: 8, borderRadius: '50%', background: COLOR.heading, display: 'inline-block',
+                boxShadow: `0 0 0 1.5px ${COLOR.panel}, 0 0 0 2.5px ${COLOR.border}`,
+              }} />
+              your coast-now scenario
+            </span>
           )}
         </div>
 
         <div
+          className="cfm-scroller"
           style={{
-            overflowX: 'auto', border: `1px solid ${COLOR.border}`, borderRadius: 8, maxHeight: '70vh', overflowY: 'auto',
+            overflowX: 'auto', border: `1px solid ${COLOR.border}`, borderRadius: 8, overflowY: 'auto',
             // keep keyboard-focused cells from scrolling underneath the sticky header row / coast-age column
             scrollPaddingTop: 56, scrollPaddingLeft: 100,
           }}
-          onMouseLeave={() => { setHoverCoast(null); setHoverTarget(null); }}
+          onPointerDown={() => setKbNav(false)}
+          onPointerLeave={(e) => { if (e.pointerType === 'mouse') { setHovered(null); setHeaderHover(null); } }}
           onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget)) { setHoverCoast(null); setHoverTarget(null); }
+            if (!e.currentTarget.contains(e.relatedTarget)) setFocusInGrid(false);
           }}
         >
           <table
@@ -921,11 +1058,11 @@ export default function CoastFireMatrix() {
                   Coast ↓ / Retire →
                 </th>
                 {targetAges.map((a) => {
-                  const colHighlighted = hoverTarget === a;
+                  const colHighlighted = crossTarget === a;
                   return (
                     <th
                       key={a}
-                      onMouseEnter={() => setHoverTarget(a)}
+                      onPointerEnter={(e) => { if (e.pointerType === 'mouse') { setHovered(null); setHeaderHover({ targetAge: a }); } }}
                       style={{
                         position: 'sticky', top: 0, zIndex: 2,
                         padding: '8px 8px', textAlign: 'center', color: COLOR.heading,
@@ -950,18 +1087,30 @@ export default function CoastFireMatrix() {
                 <tr key={coastAge}>
                   <td
                     role="rowheader"
-                    onMouseEnter={() => setHoverCoast(coastAge)}
+                    onPointerEnter={(e) => { if (e.pointerType === 'mouse') { setHovered(null); setHeaderHover({ coastAge }); } }}
                     style={{
                       position: 'sticky', left: 0, zIndex: 1,
-                      background: hoverCoast === coastAge
-                        ? COLOR.currentRowBg
-                        : (coastAge === currentAge ? COLOR.currentRowBg : COLOR.panel),
+                      // tinted only while this row is being previewed (hover / keyboard focus); "you" is marked by the pill + bar
+                      background: crossCoast === coastAge ? COLOR.currentRowBg : COLOR.panel,
                       padding: '8px 12px',
                       color: COLOR.heading, fontWeight: 700, borderRight: `1px solid ${COLOR.border}`, borderBottom: '1px solid #D6C193',
                       transition: 'background 0.1s ease',
+                      // your row: a green bar on the label's left edge (plus the "you" pill)
+                      boxShadow: coastAge === currentAge ? `inset 4px 0 0 ${COLOR.label}` : 'none',
                     }}
                   >
-                    <div>{coastAge}{coastAge === currentAge ? ' •' : ''}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>{coastAge}</span>
+                      {coastAge === currentAge && (
+                        <>
+                          <span aria-hidden="true" data-you style={{
+                            padding: '1px 6px', borderRadius: 999, background: COLOR.heading, color: COLOR.panel,
+                            fontSize: 10, fontWeight: 600, fontFamily: FONT_SANS, lineHeight: 1.4,
+                          }}>you</span>
+                          <span style={srOnly}> (your current age)</span>
+                        </>
+                      )}
+                    </div>
                     <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
                       proj. {fmt(projectedByCoastAge[coastAge])}
                     </div>
@@ -969,11 +1118,22 @@ export default function CoastFireMatrix() {
                   {targetAges.map((targetAge, ci) => {
                     const val = grid[ri][ci];
                     if (val === null) {
-                      return <td key={targetAge} style={{ padding: '8px', borderBottom: '1px solid #D6C193', background: COLOR.blankCell }} />;
+                      return (
+                        <td
+                          key={targetAge}
+                          onPointerEnter={(e) => { if (e.pointerType === 'mouse') { setHovered(null); setHeaderHover(null); } }}
+                          style={{ padding: '8px', borderBottom: '1px solid #D6C193', background: COLOR.blankCell }}
+                        />
+                      );
                     }
-                    const cleared = projectedByCoastAge[coastAge] >= val;
+                    const projected = projectedByCoastAge[coastAge];
+                    const band = coverageBand(projected, val);
+                    const pct = coveragePct(projected, val);
+                    const cleared = !band.short;
                     const isDiagonal = coastAge === targetAge;
-                    const highlighted = hoverCoast === coastAge || hoverTarget === targetAge;
+                    const isHeadline = coastNowAge !== null && coastAge === currentAge && targetAge === coastNowAge;
+                    const highlighted = crossCoast === coastAge || crossTarget === targetAge;
+                    const isPinned = !!(pinned && pinned.coastAge === coastAge && pinned.targetAge === targetAge);
                     return (
                       <td
                         key={targetAge}
@@ -981,30 +1141,43 @@ export default function CoastFireMatrix() {
                         role="gridcell"
                         data-r={ri}
                         data-c={ci}
+                        data-band={band.id}
                         tabIndex={entryCell.r === ri && entryCell.c === ci ? 0 : -1}
-                        aria-selected={!!(activeCell && activeCell.coastAge === coastAge && activeCell.targetAge === targetAge)}
-                        aria-label={`Coast at ${coastAge}, retire at ${targetAge}: needs ${fmt(val)} at coast age; your projected balance ${cleared ? 'clears it' : 'falls short'}`}
-                        title={`Coast at ${coastAge}, fully retire at ${targetAge}`}
-                        onMouseEnter={() => { setHoverCoast(coastAge); setHoverTarget(targetAge); }}
-                        onFocus={() => { setFocusCell({ r: ri, c: ci }); setHoverCoast(coastAge); setHoverTarget(targetAge); }}
+                        aria-selected={isPinned}
+                        aria-label={`Coast at ${coastAge}, retire at ${targetAge}: needs ${fmt(val)} at coast age; your projected balance ${cleared ? 'clears it' : 'falls short'}${pct !== null ? `, covering ${pct}% of the requirement` : ''}.${isHeadline ? ' This is your coast-now scenario.' : ''}`}
+                        onPointerEnter={(e) => { if (e.pointerType === 'mouse') { setHeaderHover(null); setHovered({ coastAge, targetAge }); } }}
+                        onFocus={(e) => {
+                          setFocusCell({ r: ri, c: ci });
+                          setFocusInGrid(true);
+                          // Tabbing in counts as keyboard use; a mouse click does not (pointerdown already cleared kbNav).
+                          let keyboardFocus = false;
+                          try { keyboardFocus = e.currentTarget.matches(':focus-visible'); } catch (err) { keyboardFocus = false; }
+                          if (keyboardFocus) setKbNav(true);
+                        }}
                         onKeyDown={(e) => handleCellKeyDown(e, ri, ci, coastAge, targetAge, val)}
-                        onClick={() => setActiveCell({ coastAge, targetAge, val })}
+                        onClick={() => togglePin(coastAge, targetAge)}
                         style={{
                           padding: '8px 6px',
                           textAlign: 'center',
-                          border: `1px solid ${cleared ? COLOR.clearedBorder : COLOR.notClearedBorder}`,
-                          background: cleared ? COLOR.clearedBg : COLOR.notClearedBg,
-                          color: cleared ? COLOR.clearedText : COLOR.notClearedText,
+                          border: `1px ${band.short ? 'dashed' : 'solid'} ${band.border}`,
+                          background: band.bg,
+                          color: band.text,
                           fontWeight: isDiagonal ? 700 : 400,
                           fontVariantNumeric: 'tabular-nums',
                           cursor: 'pointer',
+                          position: 'relative',
                           boxShadow: highlighted ? 'inset 0 0 0 1000px rgba(59,47,31,0.07)' : 'none',
-                          outline: activeCell && activeCell.coastAge === coastAge && activeCell.targetAge === targetAge
-                            ? `2px solid ${COLOR.heading}` : 'none',
+                          outline: isPinned ? `2px solid ${COLOR.heading}` : 'none',
                           outlineOffset: -2,
                         }}
                       >
                         {fmt(val)}
+                        {isHeadline && (
+                          <span aria-hidden="true" data-headline style={{
+                            position: 'absolute', top: 3, right: 3, width: 8, height: 8, borderRadius: '50%',
+                            background: COLOR.heading, boxShadow: `0 0 0 1.5px ${COLOR.panel}`,
+                          }} />
+                        )}
                       </td>
                     );
                   })}
@@ -1013,8 +1186,10 @@ export default function CoastFireMatrix() {
             </tbody>
           </table>
         </div>
+        </div>
 
-        <div style={{ marginTop: 18, fontSize: 12, color: COLOR.body, lineHeight: 1.6 }}>
+        <div className="cfm-notes">
+        <div style={{ marginTop: 4, fontSize: 12, color: COLOR.body, lineHeight: 1.6 }}>
           <div style={{ fontWeight: 700, color: COLOR.heading, marginBottom: 8 }}>
             Other notes &amp; explanations
           </div>
@@ -1032,7 +1207,7 @@ export default function CoastFireMatrix() {
               </li>
             )}
             <li style={{ marginBottom: 6 }}>
-              The stat cards above are quick reference points — the matrix below is the full picture across every coast age / retire age combination.
+              The headline number is the earliest retirement age your current balance alone would cover if you stopped contributing today. The matrix is the full picture across every coast age / retire age combination.
             </li>
             <li style={{ marginBottom: 6 }}>
               Each row's "proj." figure is your current balance plus annual contributions, both compounded at your real rate of return from now until that coast age — this is what's compared against the required balance in each cell. Row marked • is your current age; its proj. figure equals your current balance since there's no runway to grow before coasting today.
@@ -1049,6 +1224,8 @@ export default function CoastFireMatrix() {
           >
             View Source on GitHub
           </a>
+        </div>
+        </div>
         </div>
       </div>
     </div>
