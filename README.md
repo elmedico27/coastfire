@@ -69,7 +69,7 @@ The **inspector** above the matrix shows the required balance, projected balance
 
 ## Inputs
 
-All inputs live in the **Your numbers** panel. Numeric fields accept free typing and clamp to their range when you leave the field or press Enter. A **?** button beside the two sliders explains them; open it by hover, click, tap, or Enter, and close it with Esc or by clicking elsewhere.
+All inputs live in the **Your numbers** panel. Numeric fields accept free typing and clamp to their range when you leave the field or press Enter. Dollar fields also take shorthand like `60k` or `1.5m`, round to whole dollars, and keep their previous value if the entry can't be read. A **?** button beside the two sliders explains them; open it by hover, click, tap, or Enter, and close it with Esc or by clicking elsewhere.
 
 | Input | What it means | Default | Range |
 |---|---|---|---|

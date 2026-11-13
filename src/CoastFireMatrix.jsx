@@ -39,6 +39,15 @@ function fmt(n) {
   return `$${kRounded}K`;
 }
 
+// Parses a dollar field. Accepts "$1,000,000", "60k", "1.5m" (case-insensitive); returns whole dollars,
+// 0 for negatives, or NaN for anything else (the caller then keeps the previous value).
+function parseDollars(text) {
+  const m = String(text).trim().toLowerCase().replace(/[$,\s]/g, '').match(/^(-?)(\d+\.?\d*|\.\d+)([km]?)$/);
+  if (!m) return NaN;
+  const value = parseFloat(m[2]) * (m[3] === 'k' ? 1e3 : m[3] === 'm' ? 1e6 : 1);
+  return m[1] ? 0 : Math.round(value);
+}
+
 function fmtInput(n) {
   return n.toLocaleString('en-US');
 }
@@ -72,7 +81,8 @@ const COLOR = {
   label: '#4A6741',       // earthy green, labels / eyebrow text
   body: '#7A6C50',        // soft brown, body/caption text
   inputBg: '#FFFFFF',
-  inputBorder: '#DDCA9E',
+  control: '#9C8556',     // edges of interactive controls: >= 3:1 against panel and white (WCAG non-text contrast)
+  inputBorder: '#9C8556',
   inputText: '#3B2F1F',
   blankCell: '#FFFBF2',
   headerBg: '#FFFBF2',
@@ -123,7 +133,7 @@ const SLIDER_CSS = `
   width: 100%;
   height: 4px;
   border-radius: 999px;
-  background: ${COLOR.border};
+  background: ${COLOR.control};
   margin: 10px 0 8px;
 }
 .cfm-slider::-webkit-slider-thumb {
@@ -150,12 +160,12 @@ const SLIDER_CSS = `
 .cfm-slider::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: ${COLOR.border};
+  background: ${COLOR.control};
 }
 .cfm-slider::-moz-range-track {
   height: 4px;
   border-radius: 999px;
-  background: ${COLOR.border};
+  background: ${COLOR.control};
 }
 .cfm-toggle {
   position: relative;
@@ -164,7 +174,7 @@ const SLIDER_CSS = `
   width: 40px;
   height: 22px;
   border-radius: 999px;
-  background: ${COLOR.border};
+  background: ${COLOR.control};
   cursor: pointer;
   transition: background 0.15s ease;
   flex-shrink: 0;
@@ -555,22 +565,22 @@ export default function CoastFireMatrix() {
   }, [coastAges, currentAge, targetAges, grid, projectedByCoastAge]);
 
   const handleSpendingBlur = () => {
-    const parsed = parseFloat(spendingDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? spending : Math.max(0, parsed);
+    const parsed = parseDollars(spendingDraft);
+    const clean = isNaN(parsed) ? spending : parsed;
     setSpending(clean);
     setSpendingDraft(fmtInput(clean));
   };
 
   const handleBalanceBlur = () => {
-    const parsed = parseFloat(balanceDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? balance : Math.max(0, parsed);
+    const parsed = parseDollars(balanceDraft);
+    const clean = isNaN(parsed) ? balance : parsed;
     setBalance(clean);
     setBalanceDraft(fmtInput(clean));
   };
 
   const handleContributionBlur = () => {
-    const parsed = parseFloat(contributionDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? annualContribution : Math.max(0, parsed);
+    const parsed = parseDollars(contributionDraft);
+    const clean = isNaN(parsed) ? annualContribution : parsed;
     setAnnualContribution(clean);
     setContributionDraft(fmtInput(clean));
   };
@@ -592,8 +602,8 @@ export default function CoastFireMatrix() {
   };
 
   const handleMonthlyMortgageBlur = () => {
-    const parsed = parseFloat(monthlyMortgageDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? monthlyMortgage : Math.max(0, parsed);
+    const parsed = parseDollars(monthlyMortgageDraft);
+    const clean = isNaN(parsed) ? monthlyMortgage : parsed;
     setMonthlyMortgage(clean);
     setMonthlyMortgageDraft(fmtInput(clean));
   };
