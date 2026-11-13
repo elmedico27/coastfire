@@ -12,11 +12,12 @@ The underlying idea: CoastFIRE isn't really about hitting one age. It's about hi
 
 ## What you see
 
-- **Headline.** "Coast now, retire by" and an age: the earliest retirement age your current balance would cover if you stopped contributing today. It shows "—" when no age through 62 clears. Beneath it, a **Full FIRE target** gives a flat reference figure (see [Methodology](#methodology)).
+- **Headline.** "Coast now, retire by" and an age: the earliest retirement age your current balance would cover if you stopped contributing today. It shows "—" when no age through 62 clears.
+- **Classic FIRE number.** A small card below the headline with a flat reference figure: the classic Trinity-study rule (see [Methodology](#methodology)).
 - **Your numbers.** All the inputs, in one panel.
 - **Inspector, legend, and matrix.** Point at any cell to see the scenario behind it; the legend explains the shading.
 
-On a wide screen the inputs scroll on the left while the inspector, legend, and matrix stay in view on the right. On a phone everything stacks in one column: headline, inputs, inspector, legend, matrix, notes.
+On a wide screen the inputs scroll on the left while the inspector, legend, and matrix stay in view on the right. On a phone everything stacks in one column: headline, classic FIRE number, inputs, inspector, legend, matrix, notes.
 
 ---
 
@@ -111,7 +112,7 @@ Values between points are interpolated linearly; horizons beyond the ends use th
 
 **The headline.** Reading across your current-age row from the left, the headline is the first retirement age whose requirement your current balance already covers. That is the "coast now" answer.
 
-**Full FIRE target.** Annual spend divided by your safe withdrawal rate (plus 12 months of mortgage payment if that option is on, treated as a permanent expense). It uses no horizon adjustment and no mortgage bridge, so it is a flat reference point, not a number from the matrix. With horizon adjustment on and the mortgage option off, it equals the matrix's FI number only for the retirement age whose horizon is 30 years; earlier ages require more than this figure, and later ones slightly less.
+**Classic FIRE number.** The flat rule from the Trinity study: annual spend divided by your safe withdrawal rate (plus 12 months of mortgage payment if that option is on, treated as a permanent expense). It uses no horizon adjustment and no mortgage bridge, so it is a flat reference point, not a number from the matrix. With horizon adjustment on and the mortgage option off, it equals the matrix's FI number only for the retirement age whose horizon is 30 years; earlier ages require more than this figure, and later ones slightly less.
 
 **What's excluded from the numbers:**
 - **Education costs** are excluded from annual retirement spend.
@@ -160,6 +161,7 @@ Output goes to `dist/`, ready for static hosting. `npm run preview` serves the b
 
 - React 19
 - Vite 8
+- Fonts (IBM Plex Mono, Newsreader) are self-hosted via Fontsource and bundled at build time
 - No backend. Everything computes client-side from the inputs above; the app makes no network requests and stores nothing.
 
 ## License

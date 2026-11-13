@@ -85,7 +85,6 @@ const CARD = {
   bg: '#4A6741',
   text: '#F7F0DE',  // 5.6:1
   sub: '#E6EDD3',   // 5.3:1
-  rule: 'rgba(247,240,222,0.28)',
 };
 
 const shadowSm = '0 1px 3px rgba(59,47,31,0.08), 0 1px 2px rgba(59,47,31,0.06)';
@@ -207,8 +206,8 @@ const SLIDER_CSS = `
   outline: 2px solid ${COLOR.heading};
   outline-offset: -2px;
 }
-/* Page layout. Phones: one column in DOM order (title, hero, inputs, matrix column, notes).
-   From 960px: title / hero / inputs / notes stack on the left, and the matrix column spans all of those
+/* Page layout. Phones: one column in DOM order (title, hero, reference card, inputs, matrix column, notes).
+   From 960px: title / hero / reference / inputs / notes stack on the left, and the matrix column spans all of those
    rows and is pinned from the very top, so the page never has a "scroll, stick, release" phase. */
 .cfm-layout {
   display: grid;
@@ -228,11 +227,12 @@ const SLIDER_CSS = `
   }
   .cfm-head   { grid-column: 1; grid-row: 1; }
   .cfm-hero   { grid-column: 1; grid-row: 2; }
-  .cfm-inputs { grid-column: 1; grid-row: 3; }
-  .cfm-notes  { grid-column: 1; grid-row: 4; }
+  .cfm-ref    { grid-column: 1; grid-row: 3; }
+  .cfm-inputs { grid-column: 1; grid-row: 4; }
+  .cfm-notes  { grid-column: 1; grid-row: 5; }
   .cfm-main {
     grid-column: 2;
-    grid-row: 1 / span 4;
+    grid-row: 1 / span 5;
     position: sticky;
     top: 32px; /* equals the page's top padding, so it is already pinned at scroll position 0 */
   }
@@ -785,17 +785,26 @@ export default function CoastFireMatrix() {
               <>If you stopped contributing today, your balance wouldn't cover retirement at any age through <strong>{targetAges[targetAges.length - 1]}</strong>. The matrix shows what you'd need at each coast age.</>
             )}
           </p>
-          <div style={{
-            marginTop: 16, paddingTop: 12, borderTop: `1px solid ${CARD.rule}`,
-            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', columnGap: 12, rowGap: 2, flexWrap: 'wrap',
-          }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: CARD.text }}>Full FIRE target</div>
-              <div style={{ fontSize: 11.5, color: CARD.sub, marginTop: 2 }}>retire at any age with this amount</div>
-            </div>
-            <div data-field="fire-target" style={{ fontSize: 22, fontWeight: 700, color: CARD.text, fontFamily: FONT_MONO, fontVariantNumeric: 'tabular-nums' }}>
+        </section>
+
+        {/* Flat reference figure, kept apart from the hero because it is not a matrix number. */}
+        <section
+          aria-label="Classic FIRE number"
+          className="cfm-ref"
+          style={{
+            background: COLOR.panel, border: `1px solid ${COLOR.border}`, borderRadius: 8,
+            padding: '12px 16px', marginBottom: 14, boxShadow: shadowSm,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', columnGap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: COLOR.label }}>Classic FIRE number</span>
+            <span data-field="fire-target" style={{ fontSize: 18, fontWeight: 700, color: COLOR.heading, fontFamily: FONT_MONO, fontVariantNumeric: 'tabular-nums' }}>
               {fmt(anchorFi)}
-            </div>
+            </span>
+          </div>
+          <div style={{ fontSize: 11.5, color: COLOR.body, lineHeight: 1.5, marginTop: 4 }}>
+            {mortgagePayoff ? 'Spend plus mortgage' : 'Annual spend'} ÷ {swr.toFixed(1)}%, the flat rule from the Trinity study.
+            A reference only: it ignores retirement length{mortgagePayoff ? ' and payoff age' : ''}, so matrix figures differ.
           </div>
         </section>
 
