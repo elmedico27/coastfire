@@ -1090,7 +1090,10 @@ export default function CoastFireMatrix() {
                   textAlign: 'left', color: COLOR.heading, borderBottom: `1px solid ${COLOR.border}`, borderRight: `1px solid ${COLOR.border}`,
                   fontWeight: 700, fontSize: 12, fontFamily: FONT_SANS
                 }}>
-                  Coast ↓ / Retire →
+                  {/* Two fixed lines: column label at top right, row label at bottom left, so it never wraps mid-phrase. */}
+                  <span aria-hidden="true" style={{ display: 'block', textAlign: 'right', whiteSpace: 'nowrap' }}>Retire →</span>
+                  <span aria-hidden="true" style={{ display: 'block', whiteSpace: 'nowrap' }}>Coast ↓</span>
+                  <span style={srOnly}>Coast age by retirement age</span>
                 </th>
                 {targetAges.map((a) => {
                   const colHighlighted = crossTarget === a;
@@ -1108,7 +1111,7 @@ export default function CoastFireMatrix() {
                     >
                       <div>{a}</div>
                       {horizonAdjust && (
-                        <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
+                        <div style={{ fontSize: 9.5, color: colHighlighted ? COLOR.heading : COLOR.body, fontWeight: 400 }}>
                           {(fiByTarget[a].effSwr * 100).toFixed(2)}%
                         </div>
                       )}
@@ -1146,7 +1149,7 @@ export default function CoastFireMatrix() {
                         </>
                       )}
                     </div>
-                    <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
+                    <div style={{ fontSize: 9.5, color: crossCoast === coastAge ? COLOR.heading : COLOR.body, fontWeight: 400 }}>
                       proj. {fmt(projectedByCoastAge[coastAge])}
                     </div>
                   </td>
