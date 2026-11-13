@@ -87,6 +87,7 @@ const COLOR = {
   blankCell: '#FFFBF2',
   headerBg: '#FFFBF2',
   currentRowBg: '#E8D8A9',
+  rowRule: '#D6C193',     // horizontal rules between matrix rows
 };
 
 // ---- Stat card accent (this is where the "pop" lives) ----
@@ -590,6 +591,8 @@ export default function CoastFireMatrix() {
   const handleAgeBlur = () => {
     const parsed = parseInt(currentAgeDraft, 10);
     const clean = isNaN(parsed) ? currentAge : clamp(parsed, 18, 62);
+    // A pinned cell whose coast age is now in the past is off the grid: drop it rather than let it reappear later.
+    if (pinned && pinned.coastAge < clean) setPinned(null);
     setCurrentAge(clean);
     setCurrentAgeDraft(String(clean));
   };
@@ -783,7 +786,7 @@ export default function CoastFireMatrix() {
           }}
         >
           <div style={{ fontSize: 14, fontWeight: 600, color: CARD.text, fontFamily: FONT_SANS }}>
-            Coast now, retire by
+            Coast now, retire as early as
           </div>
           <div
             aria-hidden="true"
@@ -1052,7 +1055,8 @@ export default function CoastFireMatrix() {
           ))}
           <span>of the required balance</span>
           {coastNowAge !== null && (
-            <span data-legend-now style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            // pushed to the far right so it reads as a separate key, not part of the coverage sentence
+            <span data-legend-now style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
               <span aria-hidden="true" style={{
                 width: 8, height: 8, borderRadius: '50%', background: COLOR.heading, display: 'inline-block',
                 boxShadow: `0 0 0 1.5px ${COLOR.panel}, 0 0 0 2.5px ${COLOR.border}`,
@@ -1131,7 +1135,7 @@ export default function CoastFireMatrix() {
                       // tinted only while this row is being previewed (hover / keyboard focus); "you" is marked by the pill + bar
                       background: crossCoast === coastAge ? COLOR.currentRowBg : COLOR.panel,
                       padding: '8px 12px',
-                      color: COLOR.heading, fontWeight: 700, borderRight: `1px solid ${COLOR.border}`, borderBottom: '1px solid #D6C193',
+                      color: COLOR.heading, fontWeight: 700, borderRight: `1px solid ${COLOR.border}`, borderBottom: `1px solid ${COLOR.rowRule}`,
                       transition: 'background 0.1s ease',
                       // your row: a green bar on the label's left edge (plus the "you" pill)
                       boxShadow: coastAge === currentAge ? `inset 4px 0 0 ${COLOR.label}` : 'none',
@@ -1160,7 +1164,7 @@ export default function CoastFireMatrix() {
                         <td
                           key={targetAge}
                           onPointerEnter={(e) => { if (e.pointerType === 'mouse') { setHovered(null); setHeaderHover(null); } }}
-                          style={{ padding: '8px', borderBottom: '1px solid #D6C193', background: COLOR.blankCell }}
+                          style={{ padding: '8px', borderBottom: `1px solid ${COLOR.rowRule}`, background: COLOR.blankCell }}
                         />
                       );
                     }
@@ -1203,7 +1207,7 @@ export default function CoastFireMatrix() {
                           borderLeft: isDiagonal && ci > 0 ? `1px ${band.short ? 'dashed' : 'solid'} ${band.border}` : undefined,
                           background: band.bg,
                           color: band.text,
-                          fontWeight: isDiagonal ? 700 : 400,
+                          fontWeight: 400,
                           fontVariantNumeric: 'tabular-nums',
                           cursor: 'pointer',
                           position: 'relative',
@@ -1237,7 +1241,7 @@ export default function CoastFireMatrix() {
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             <li style={{ marginBottom: 6 }}>
               {horizonAdjust ? (
-                <>Safe withdrawal rate — the slider sets your baseline rate for a 30-year retirement, but a rate that's safe over 30 years isn't automatically safe over a longer stretch, or overly conservative over a shorter one. With adjustment on, the model corrects for this against your life expectancy ({lifeExpectancy}): retiring earlier means your money needs to stretch further, which lowers the effective rate (and raises the balance you need); retiring later shortens that stretch and raises the effective rate. The small % under each retirement-age column header is the adjusted rate actually used for that age.</>
+                <>Safe withdrawal rate — the slider sets your baseline rate for a {ANCHOR_HORIZON}-year retirement, but a rate that's safe over {ANCHOR_HORIZON} years isn't automatically safe over a longer stretch, or overly conservative over a shorter one. With adjustment on, the model corrects for this against your life expectancy ({lifeExpectancy}): retiring earlier means your money needs to stretch further, which lowers the effective rate (and raises the balance you need); retiring later shortens that stretch and raises the effective rate. The small % under each retirement-age column header is the adjusted rate actually used for that age.</>
               ) : (
                 <>Safe withdrawal rate — horizon adjustment is off, so your safe withdrawal rate is applied flat across every retirement age, with no correction for how long that specific retirement needs the money to last.</>
               )}

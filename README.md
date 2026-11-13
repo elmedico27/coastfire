@@ -12,7 +12,7 @@ The underlying idea: CoastFIRE isn't really about hitting one age. It's about hi
 
 ## What you see
 
-- **Headline.** "Coast now, retire by" and an age: the earliest retirement age your current balance would cover if you stopped contributing today. It shows "—" when no age through 62 clears.
+- **Headline.** "Coast now, retire as early as" and an age: the earliest retirement age your current balance would cover if you stopped contributing today. It shows "—" when no age through 62 clears.
 - **Classic FIRE number.** A small card below the headline with a flat reference figure: the classic Trinity-study rule (see [Methodology](#methodology)).
 - **Your numbers.** All the inputs, in one panel.
 - **Inspector, legend, and matrix.** Point at any cell to see the scenario behind it; the legend explains the shading.
