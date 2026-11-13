@@ -124,7 +124,6 @@ const SLIDER_CSS = `
   height: 4px;
   border-radius: 999px;
   background: ${COLOR.border};
-  outline: none;
   margin: 10px 0 8px;
 }
 .cfm-slider::-webkit-slider-thumb {
@@ -166,7 +165,6 @@ const SLIDER_CSS = `
   height: 22px;
   border-radius: 999px;
   background: ${COLOR.border};
-  outline: none;
   cursor: pointer;
   transition: background 0.15s ease;
   flex-shrink: 0;
@@ -241,6 +239,16 @@ const SLIDER_CSS = `
     max-height: calc(100vh - 250px);
     min-height: 260px;
   }
+}
+/* Focus rings for the input panel (text fields, sliders, toggles). */
+.cfm-input:focus-visible,
+.cfm-toggle:focus-visible {
+  outline: 2px solid ${COLOR.heading};
+  outline-offset: 2px;
+}
+.cfm-slider:focus-visible {
+  outline: 2px solid ${COLOR.heading};
+  outline-offset: 6px;
 }
 .cfm-cell:focus {
   outline: none;
@@ -699,7 +707,6 @@ export default function CoastFireMatrix() {
     padding: '8px 10px',
     width: '100%',
     boxSizing: 'border-box',
-    outline: 'none',
   };
 
   const dollarPrefixStyle = {
@@ -830,6 +837,7 @@ export default function CoastFireMatrix() {
               <label htmlFor="input-age" style={labelStyle}>Current age</label>
               <input
                 id="input-age"
+                className="cfm-input"
                 style={inputStyle}
                 type="number" min="18" max="62"
                 value={currentAgeDraft}
@@ -845,6 +853,7 @@ export default function CoastFireMatrix() {
                 <span style={dollarPrefixStyle}>$</span>
                 <input
                   id="input-balance"
+                  className="cfm-input"
                   style={{ ...inputStyle, paddingLeft: 22 }}
                   value={balanceDraft}
                   onChange={(e) => setBalanceDraft(e.target.value)}
@@ -861,6 +870,7 @@ export default function CoastFireMatrix() {
                 <span style={dollarPrefixStyle}>$</span>
                 <input
                   id="input-contribution"
+                  className="cfm-input"
                   style={{ ...inputStyle, paddingLeft: 22 }}
                   value={contributionDraft}
                   onChange={(e) => setContributionDraft(e.target.value)}
@@ -879,6 +889,7 @@ export default function CoastFireMatrix() {
                 <span style={dollarPrefixStyle}>$</span>
                 <input
                   id="input-spending"
+                  className="cfm-input"
                   style={{ ...inputStyle, paddingLeft: 22 }}
                   value={spendingDraft}
                   onChange={(e) => setSpendingDraft(e.target.value)}
@@ -943,6 +954,7 @@ export default function CoastFireMatrix() {
                 <label htmlFor="input-life-expectancy" style={labelStyle}>Life expectancy</label>
                 <input
                   id="input-life-expectancy"
+                  className="cfm-input"
                   style={inputStyle}
                   type="number" min="70" max="105"
                   value={lifeExpectancyDraft}
@@ -982,6 +994,7 @@ export default function CoastFireMatrix() {
                     <span style={dollarPrefixStyle}>$</span>
                     <input
                       id="input-monthly-mortgage"
+                      className="cfm-input"
                       style={{ ...inputStyle, paddingLeft: 22 }}
                       value={monthlyMortgageDraft}
                       onChange={(e) => setMonthlyMortgageDraft(e.target.value)}
@@ -996,6 +1009,7 @@ export default function CoastFireMatrix() {
                   <label htmlFor="input-payoff-age" style={labelStyle}>Age at payoff</label>
                   <input
                     id="input-payoff-age"
+                    className="cfm-input"
                     style={inputStyle}
                     type="number" min="18" max="100"
                     value={payoffAgeDraft}
@@ -1055,7 +1069,9 @@ export default function CoastFireMatrix() {
             ref={gridRef}
             role="grid"
             aria-label="Balance needed at each coast age, by retirement age"
-            style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5, fontFamily: FONT_MONO }}
+            // Separate (not collapsed) borders: collapsed borders belong to the table, so they scroll away from
+            // the sticky header row and coast-age column. Each cell draws only its own right and bottom edges.
+            style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', fontSize: 12.5, fontFamily: FONT_MONO }}
           >
             <thead>
               <tr>
@@ -1168,7 +1184,10 @@ export default function CoastFireMatrix() {
                         style={{
                           padding: '8px 6px',
                           textAlign: 'center',
-                          border: `1px ${band.short ? 'dashed' : 'solid'} ${band.border}`,
+                          borderRight: `1px ${band.short ? 'dashed' : 'solid'} ${band.border}`,
+                          borderBottom: `1px ${band.short ? 'dashed' : 'solid'} ${band.border}`,
+                          // the blank cell to the left has no edge, so the diagonal draws its own (except beside the row header)
+                          borderLeft: isDiagonal && ci > 0 ? `1px ${band.short ? 'dashed' : 'solid'} ${band.border}` : undefined,
                           background: band.bg,
                           color: band.text,
                           fontWeight: isDiagonal ? 700 : 400,
