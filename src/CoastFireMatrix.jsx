@@ -1115,7 +1115,7 @@ export default function CoastFireMatrix() {
                     >
                       <div>{a}</div>
                       {horizonAdjust && (
-                        <div style={{ fontSize: 9.5, color: colHighlighted ? COLOR.heading : COLOR.body, fontWeight: 400 }}>
+                        <div style={{ fontSize: 10.5, color: colHighlighted ? COLOR.heading : COLOR.body, fontWeight: 400 }}>
                           {(fiByTarget[a].effSwr * 100).toFixed(2)}%
                         </div>
                       )}
@@ -1153,7 +1153,7 @@ export default function CoastFireMatrix() {
                         </>
                       )}
                     </div>
-                    <div style={{ fontSize: 9.5, color: crossCoast === coastAge ? COLOR.heading : COLOR.body, fontWeight: 400 }}>
+                    <div style={{ fontSize: 10.5, color: crossCoast === coastAge ? COLOR.heading : COLOR.body, fontWeight: 400 }}>
                       proj. {fmt(projectedByCoastAge[coastAge])}
                     </div>
                   </td>
