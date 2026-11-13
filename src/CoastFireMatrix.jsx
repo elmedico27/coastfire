@@ -39,6 +39,15 @@ function fmt(n) {
   return `$${kRounded}K`;
 }
 
+// Parses a dollar field. Accepts "$1,000,000", "60k", "1.5m" (case-insensitive); returns whole dollars,
+// 0 for negatives, or NaN for anything else (the caller then keeps the previous value).
+function parseDollars(text) {
+  const m = String(text).trim().toLowerCase().replace(/[$,\s]/g, '').match(/^(-?)(\d+\.?\d*|\.\d+)([km]?)$/);
+  if (!m) return NaN;
+  const value = parseFloat(m[2]) * (m[3] === 'k' ? 1e3 : m[3] === 'm' ? 1e6 : 1);
+  return m[1] ? 0 : Math.round(value);
+}
+
 function fmtInput(n) {
   return n.toLocaleString('en-US');
 }
@@ -72,11 +81,13 @@ const COLOR = {
   label: '#4A6741',       // earthy green, labels / eyebrow text
   body: '#7A6C50',        // soft brown, body/caption text
   inputBg: '#FFFFFF',
-  inputBorder: '#DDCA9E',
+  control: '#9C8556',     // edges of interactive controls: >= 3:1 against panel and white (WCAG non-text contrast)
+  inputBorder: '#9C8556',
   inputText: '#3B2F1F',
   blankCell: '#FFFBF2',
   headerBg: '#FFFBF2',
   currentRowBg: '#E8D8A9',
+  rowRule: '#D6C193',     // horizontal rules between matrix rows
 };
 
 // ---- Stat card accent (this is where the "pop" lives) ----
@@ -85,7 +96,6 @@ const CARD = {
   bg: '#4A6741',
   text: '#F7F0DE',  // 5.6:1
   sub: '#E6EDD3',   // 5.3:1
-  rule: 'rgba(247,240,222,0.28)',
 };
 
 const shadowSm = '0 1px 3px rgba(59,47,31,0.08), 0 1px 2px rgba(59,47,31,0.06)';
@@ -124,8 +134,7 @@ const SLIDER_CSS = `
   width: 100%;
   height: 4px;
   border-radius: 999px;
-  background: ${COLOR.border};
-  outline: none;
+  background: ${COLOR.control};
   margin: 10px 0 8px;
 }
 .cfm-slider::-webkit-slider-thumb {
@@ -152,12 +161,12 @@ const SLIDER_CSS = `
 .cfm-slider::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: ${COLOR.border};
+  background: ${COLOR.control};
 }
 .cfm-slider::-moz-range-track {
   height: 4px;
   border-radius: 999px;
-  background: ${COLOR.border};
+  background: ${COLOR.control};
 }
 .cfm-toggle {
   position: relative;
@@ -166,8 +175,7 @@ const SLIDER_CSS = `
   width: 40px;
   height: 22px;
   border-radius: 999px;
-  background: ${COLOR.border};
-  outline: none;
+  background: ${COLOR.control};
   cursor: pointer;
   transition: background 0.15s ease;
   flex-shrink: 0;
@@ -207,8 +215,8 @@ const SLIDER_CSS = `
   outline: 2px solid ${COLOR.heading};
   outline-offset: -2px;
 }
-/* Page layout. Phones: one column in DOM order (title, hero, inputs, matrix column, notes).
-   From 960px: title / hero / inputs / notes stack on the left, and the matrix column spans all of those
+/* Page layout. Phones: one column in DOM order (title, hero, reference card, inputs, matrix column, notes).
+   From 960px: title / hero / reference / inputs / notes stack on the left, and the matrix column spans all of those
    rows and is pinned from the very top, so the page never has a "scroll, stick, release" phase. */
 .cfm-layout {
   display: grid;
@@ -228,11 +236,12 @@ const SLIDER_CSS = `
   }
   .cfm-head   { grid-column: 1; grid-row: 1; }
   .cfm-hero   { grid-column: 1; grid-row: 2; }
-  .cfm-inputs { grid-column: 1; grid-row: 3; }
-  .cfm-notes  { grid-column: 1; grid-row: 4; }
+  .cfm-ref    { grid-column: 1; grid-row: 3; }
+  .cfm-inputs { grid-column: 1; grid-row: 4; }
+  .cfm-notes  { grid-column: 1; grid-row: 5; }
   .cfm-main {
     grid-column: 2;
-    grid-row: 1 / span 4;
+    grid-row: 1 / span 5;
     position: sticky;
     top: 32px; /* equals the page's top padding, so it is already pinned at scroll position 0 */
   }
@@ -241,6 +250,16 @@ const SLIDER_CSS = `
     max-height: calc(100vh - 250px);
     min-height: 260px;
   }
+}
+/* Focus rings for the input panel (text fields, sliders, toggles). */
+.cfm-input:focus-visible,
+.cfm-toggle:focus-visible {
+  outline: 2px solid ${COLOR.heading};
+  outline-offset: 2px;
+}
+.cfm-slider:focus-visible {
+  outline: 2px solid ${COLOR.heading};
+  outline-offset: 6px;
 }
 .cfm-cell:focus {
   outline: none;
@@ -547,22 +566,22 @@ export default function CoastFireMatrix() {
   }, [coastAges, currentAge, targetAges, grid, projectedByCoastAge]);
 
   const handleSpendingBlur = () => {
-    const parsed = parseFloat(spendingDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? spending : Math.max(0, parsed);
+    const parsed = parseDollars(spendingDraft);
+    const clean = isNaN(parsed) ? spending : parsed;
     setSpending(clean);
     setSpendingDraft(fmtInput(clean));
   };
 
   const handleBalanceBlur = () => {
-    const parsed = parseFloat(balanceDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? balance : Math.max(0, parsed);
+    const parsed = parseDollars(balanceDraft);
+    const clean = isNaN(parsed) ? balance : parsed;
     setBalance(clean);
     setBalanceDraft(fmtInput(clean));
   };
 
   const handleContributionBlur = () => {
-    const parsed = parseFloat(contributionDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? annualContribution : Math.max(0, parsed);
+    const parsed = parseDollars(contributionDraft);
+    const clean = isNaN(parsed) ? annualContribution : parsed;
     setAnnualContribution(clean);
     setContributionDraft(fmtInput(clean));
   };
@@ -572,6 +591,8 @@ export default function CoastFireMatrix() {
   const handleAgeBlur = () => {
     const parsed = parseInt(currentAgeDraft, 10);
     const clean = isNaN(parsed) ? currentAge : clamp(parsed, 18, 62);
+    // A pinned cell whose coast age is now in the past is off the grid: drop it rather than let it reappear later.
+    if (pinned && pinned.coastAge < clean) setPinned(null);
     setCurrentAge(clean);
     setCurrentAgeDraft(String(clean));
   };
@@ -584,8 +605,8 @@ export default function CoastFireMatrix() {
   };
 
   const handleMonthlyMortgageBlur = () => {
-    const parsed = parseFloat(monthlyMortgageDraft.replace(/[^0-9.]/g, ''));
-    const clean = isNaN(parsed) ? monthlyMortgage : Math.max(0, parsed);
+    const parsed = parseDollars(monthlyMortgageDraft);
+    const clean = isNaN(parsed) ? monthlyMortgage : parsed;
     setMonthlyMortgage(clean);
     setMonthlyMortgageDraft(fmtInput(clean));
   };
@@ -699,7 +720,6 @@ export default function CoastFireMatrix() {
     padding: '8px 10px',
     width: '100%',
     boxSizing: 'border-box',
-    outline: 'none',
   };
 
   const dollarPrefixStyle = {
@@ -766,7 +786,7 @@ export default function CoastFireMatrix() {
           }}
         >
           <div style={{ fontSize: 14, fontWeight: 600, color: CARD.text, fontFamily: FONT_SANS }}>
-            Coast now, retire by
+            Coast now, retire as early as
           </div>
           <div
             aria-hidden="true"
@@ -785,17 +805,26 @@ export default function CoastFireMatrix() {
               <>If you stopped contributing today, your balance wouldn't cover retirement at any age through <strong>{targetAges[targetAges.length - 1]}</strong>. The matrix shows what you'd need at each coast age.</>
             )}
           </p>
-          <div style={{
-            marginTop: 16, paddingTop: 12, borderTop: `1px solid ${CARD.rule}`,
-            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', columnGap: 12, rowGap: 2, flexWrap: 'wrap',
-          }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: CARD.text }}>Full FIRE target</div>
-              <div style={{ fontSize: 11.5, color: CARD.sub, marginTop: 2 }}>retire at any age with this amount</div>
-            </div>
-            <div data-field="fire-target" style={{ fontSize: 22, fontWeight: 700, color: CARD.text, fontFamily: FONT_MONO, fontVariantNumeric: 'tabular-nums' }}>
+        </section>
+
+        {/* Flat reference figure, kept apart from the hero because it is not a matrix number. */}
+        <section
+          aria-label="Classic FIRE number"
+          className="cfm-ref"
+          style={{
+            background: COLOR.panel, border: `1px solid ${COLOR.border}`, borderRadius: 8,
+            padding: '12px 16px', marginBottom: 14, boxShadow: shadowSm,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', columnGap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: COLOR.label }}>Classic FIRE number</span>
+            <span data-field="fire-target" style={{ fontSize: 18, fontWeight: 700, color: COLOR.heading, fontFamily: FONT_MONO, fontVariantNumeric: 'tabular-nums' }}>
               {fmt(anchorFi)}
-            </div>
+            </span>
+          </div>
+          <div style={{ fontSize: 11.5, color: COLOR.body, lineHeight: 1.5, marginTop: 4 }}>
+            {mortgagePayoff ? 'Spend plus mortgage' : 'Annual spend'} ÷ {swr.toFixed(1)}%, the flat rule from the Trinity study.
+            A reference only: it ignores retirement length{mortgagePayoff ? ' and payoff age' : ''}, so matrix figures differ.
           </div>
         </section>
 
@@ -821,6 +850,7 @@ export default function CoastFireMatrix() {
               <label htmlFor="input-age" style={labelStyle}>Current age</label>
               <input
                 id="input-age"
+                className="cfm-input"
                 style={inputStyle}
                 type="number" min="18" max="62"
                 value={currentAgeDraft}
@@ -836,6 +866,7 @@ export default function CoastFireMatrix() {
                 <span style={dollarPrefixStyle}>$</span>
                 <input
                   id="input-balance"
+                  className="cfm-input"
                   style={{ ...inputStyle, paddingLeft: 22 }}
                   value={balanceDraft}
                   onChange={(e) => setBalanceDraft(e.target.value)}
@@ -852,6 +883,7 @@ export default function CoastFireMatrix() {
                 <span style={dollarPrefixStyle}>$</span>
                 <input
                   id="input-contribution"
+                  className="cfm-input"
                   style={{ ...inputStyle, paddingLeft: 22 }}
                   value={contributionDraft}
                   onChange={(e) => setContributionDraft(e.target.value)}
@@ -870,6 +902,7 @@ export default function CoastFireMatrix() {
                 <span style={dollarPrefixStyle}>$</span>
                 <input
                   id="input-spending"
+                  className="cfm-input"
                   style={{ ...inputStyle, paddingLeft: 22 }}
                   value={spendingDraft}
                   onChange={(e) => setSpendingDraft(e.target.value)}
@@ -934,6 +967,7 @@ export default function CoastFireMatrix() {
                 <label htmlFor="input-life-expectancy" style={labelStyle}>Life expectancy</label>
                 <input
                   id="input-life-expectancy"
+                  className="cfm-input"
                   style={inputStyle}
                   type="number" min="70" max="105"
                   value={lifeExpectancyDraft}
@@ -973,6 +1007,7 @@ export default function CoastFireMatrix() {
                     <span style={dollarPrefixStyle}>$</span>
                     <input
                       id="input-monthly-mortgage"
+                      className="cfm-input"
                       style={{ ...inputStyle, paddingLeft: 22 }}
                       value={monthlyMortgageDraft}
                       onChange={(e) => setMonthlyMortgageDraft(e.target.value)}
@@ -987,6 +1022,7 @@ export default function CoastFireMatrix() {
                   <label htmlFor="input-payoff-age" style={labelStyle}>Age at payoff</label>
                   <input
                     id="input-payoff-age"
+                    className="cfm-input"
                     style={inputStyle}
                     type="number" min="18" max="100"
                     value={payoffAgeDraft}
@@ -1019,7 +1055,8 @@ export default function CoastFireMatrix() {
           ))}
           <span>of the required balance</span>
           {coastNowAge !== null && (
-            <span data-legend-now style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            // pushed to the far right so it reads as a separate key, not part of the coverage sentence
+            <span data-legend-now style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
               <span aria-hidden="true" style={{
                 width: 8, height: 8, borderRadius: '50%', background: COLOR.heading, display: 'inline-block',
                 boxShadow: `0 0 0 1.5px ${COLOR.panel}, 0 0 0 2.5px ${COLOR.border}`,
@@ -1046,7 +1083,9 @@ export default function CoastFireMatrix() {
             ref={gridRef}
             role="grid"
             aria-label="Balance needed at each coast age, by retirement age"
-            style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5, fontFamily: FONT_MONO }}
+            // Separate (not collapsed) borders: collapsed borders belong to the table, so they scroll away from
+            // the sticky header row and coast-age column. Each cell draws only its own right and bottom edges.
+            style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', fontSize: 12.5, fontFamily: FONT_MONO }}
           >
             <thead>
               <tr>
@@ -1055,7 +1094,10 @@ export default function CoastFireMatrix() {
                   textAlign: 'left', color: COLOR.heading, borderBottom: `1px solid ${COLOR.border}`, borderRight: `1px solid ${COLOR.border}`,
                   fontWeight: 700, fontSize: 12, fontFamily: FONT_SANS
                 }}>
-                  Coast ↓ / Retire →
+                  {/* Two fixed lines: column label at top right, row label at bottom left, so it never wraps mid-phrase. */}
+                  <span aria-hidden="true" style={{ display: 'block', textAlign: 'right', whiteSpace: 'nowrap' }}>Retire →</span>
+                  <span aria-hidden="true" style={{ display: 'block', whiteSpace: 'nowrap' }}>Coast ↓</span>
+                  <span style={srOnly}>Coast age by retirement age</span>
                 </th>
                 {targetAges.map((a) => {
                   const colHighlighted = crossTarget === a;
@@ -1073,7 +1115,7 @@ export default function CoastFireMatrix() {
                     >
                       <div>{a}</div>
                       {horizonAdjust && (
-                        <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
+                        <div style={{ fontSize: 10.5, color: colHighlighted ? COLOR.heading : COLOR.body, fontWeight: 400 }}>
                           {(fiByTarget[a].effSwr * 100).toFixed(2)}%
                         </div>
                       )}
@@ -1093,7 +1135,7 @@ export default function CoastFireMatrix() {
                       // tinted only while this row is being previewed (hover / keyboard focus); "you" is marked by the pill + bar
                       background: crossCoast === coastAge ? COLOR.currentRowBg : COLOR.panel,
                       padding: '8px 12px',
-                      color: COLOR.heading, fontWeight: 700, borderRight: `1px solid ${COLOR.border}`, borderBottom: '1px solid #D6C193',
+                      color: COLOR.heading, fontWeight: 700, borderRight: `1px solid ${COLOR.border}`, borderBottom: `1px solid ${COLOR.rowRule}`,
                       transition: 'background 0.1s ease',
                       // your row: a green bar on the label's left edge (plus the "you" pill)
                       boxShadow: coastAge === currentAge ? `inset 4px 0 0 ${COLOR.label}` : 'none',
@@ -1111,7 +1153,7 @@ export default function CoastFireMatrix() {
                         </>
                       )}
                     </div>
-                    <div style={{ fontSize: 9.5, color: COLOR.body, fontWeight: 400 }}>
+                    <div style={{ fontSize: 10.5, color: crossCoast === coastAge ? COLOR.heading : COLOR.body, fontWeight: 400 }}>
                       proj. {fmt(projectedByCoastAge[coastAge])}
                     </div>
                   </td>
@@ -1122,7 +1164,7 @@ export default function CoastFireMatrix() {
                         <td
                           key={targetAge}
                           onPointerEnter={(e) => { if (e.pointerType === 'mouse') { setHovered(null); setHeaderHover(null); } }}
-                          style={{ padding: '8px', borderBottom: '1px solid #D6C193', background: COLOR.blankCell }}
+                          style={{ padding: '8px', borderBottom: `1px solid ${COLOR.rowRule}`, background: COLOR.blankCell }}
                         />
                       );
                     }
@@ -1159,10 +1201,13 @@ export default function CoastFireMatrix() {
                         style={{
                           padding: '8px 6px',
                           textAlign: 'center',
-                          border: `1px ${band.short ? 'dashed' : 'solid'} ${band.border}`,
+                          borderRight: `1px ${band.short ? 'dashed' : 'solid'} ${band.border}`,
+                          borderBottom: `1px ${band.short ? 'dashed' : 'solid'} ${band.border}`,
+                          // the blank cell to the left has no edge, so the diagonal draws its own (except beside the row header)
+                          borderLeft: isDiagonal && ci > 0 ? `1px ${band.short ? 'dashed' : 'solid'} ${band.border}` : undefined,
                           background: band.bg,
                           color: band.text,
-                          fontWeight: isDiagonal ? 700 : 400,
+                          fontWeight: 400,
                           fontVariantNumeric: 'tabular-nums',
                           cursor: 'pointer',
                           position: 'relative',
@@ -1196,7 +1241,7 @@ export default function CoastFireMatrix() {
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             <li style={{ marginBottom: 6 }}>
               {horizonAdjust ? (
-                <>Safe withdrawal rate — the slider sets your baseline rate for a 30-year retirement, but a rate that's safe over 30 years isn't automatically safe over a longer stretch, or overly conservative over a shorter one. With adjustment on, the model corrects for this against your life expectancy ({lifeExpectancy}): retiring earlier means your money needs to stretch further, which lowers the effective rate (and raises the balance you need); retiring later shortens that stretch and raises the effective rate. The small % under each retirement-age column header is the adjusted rate actually used for that age.</>
+                <>Safe withdrawal rate — the slider sets your baseline rate for a {ANCHOR_HORIZON}-year retirement, but a rate that's safe over {ANCHOR_HORIZON} years isn't automatically safe over a longer stretch, or overly conservative over a shorter one. With adjustment on, the model corrects for this against your life expectancy ({lifeExpectancy}): retiring earlier means your money needs to stretch further, which lowers the effective rate (and raises the balance you need); retiring later shortens that stretch and raises the effective rate. The small % under each retirement-age column header is the adjusted rate actually used for that age.</>
               ) : (
                 <>Safe withdrawal rate — horizon adjustment is off, so your safe withdrawal rate is applied flat across every retirement age, with no correction for how long that specific retirement needs the money to last.</>
               )}
